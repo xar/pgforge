@@ -1,12 +1,34 @@
 {
   "name": "pgforge",
+  "version": "0.1.0",
+  "description": "Modern PostgreSQL instance manager",
   "module": "index.ts",
   "type": "module",
+  "bin": {
+    "pgforge": "./index.ts"
+  },
   "private": true,
+  "keywords": ["postgresql", "postgres", "database", "instance", "manager", "cli"],
+  "scripts": {
+    "build": "bun build index.ts --outfile dist/pgforge --target bun",
+    "build:binary": "bun build index.ts --compile --outfile pgforge",
+    "dev": "bun run --watch index.ts",
+    "start": "bun run index.ts"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "yaml": "^2.3.4",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "^20.10.5"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   }
 }
