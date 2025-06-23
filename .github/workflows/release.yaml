@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build executables
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            output: pgforge-linux-x64
+          - os: macos-latest
+            target: darwin-x64
+            output: pgforge-darwin-x64
+          - os: macos-latest-xlarge
+            target: darwin-arm64
+            output: pgforge-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build executable
+        run: bun build index.ts --compile --outfile ${{ matrix.output }}
+
+      - name: Make executable (Unix)
+        if: matrix.os != 'windows-latest'
+        run: chmod +x ${{ matrix.output }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find ./artifacts -name "pgforge-*" -type f -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "## What's Changed" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Features" >> $GITHUB_OUTPUT
+          echo "- Release ${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Downloads" >> $GITHUB_OUTPUT
+          echo "- **Linux (x64)**: Download \`pgforge-linux-x64\`" >> $GITHUB_OUTPUT
+          echo "- **macOS (Intel)**: Download \`pgforge-darwin-x64\`" >> $GITHUB_OUTPUT
+          echo "- **macOS (Apple Silicon)**: Download \`pgforge-darwin-arm64\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Installation" >> $GITHUB_OUTPUT
+          echo "1. Download the appropriate binary for your platform" >> $GITHUB_OUTPUT
+          echo "2. Make it executable: \`chmod +x pgforge-*\`" >> $GITHUB_OUTPUT
+          echo "3. Move to your PATH: \`sudo mv pgforge-* /usr/local/bin/pgforge\`" >> $GITHUB_OUTPUT
+          echo "4. Initialize: \`pgforge init\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD~1)...${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          files: release-assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
