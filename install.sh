@@ -101,6 +101,18 @@ install_bun() {
     fi
 }
 
+check_postgresql_version() {
+    local version="$1"
+    local min_version="15.3"
+    
+    # Compare versions using sort -V
+    if [[ "$(printf '%s\n' "$min_version" "$version" | sort -V | head -n1)" = "$min_version" ]]; then
+        return 0  # Version is >= 15.3
+    else
+        return 1  # Version is < 15.3
+    fi
+}
+
 install_postgresql() {
     print_info "Installing PostgreSQL..."
     
@@ -108,19 +120,62 @@ install_postgresql() {
     if command -v postgres &> /dev/null; then
         PG_VERSION=$(postgres --version | cut -d' ' -f3)
         print_info "PostgreSQL $PG_VERSION is already installed"
+        
+        # Check if version meets minimum requirements
+        if check_postgresql_version "$PG_VERSION"; then
+            print_success "PostgreSQL version meets minimum requirements (15.3+)"
+        else
+            print_warning "PostgreSQL $PG_VERSION is below minimum required version 15.3"
+            print_info "Installing PostgreSQL 15 from official repository..."
+            install_postgresql_15
+        fi
         return 0
     fi
     
-    # Install PostgreSQL
+    # Install PostgreSQL 15+ from official repository
+    install_postgresql_15
+}
+
+install_postgresql_15() {
+    print_info "Adding PostgreSQL official APT repository..."
+    
+    # Install required packages for repository setup
+    sudo apt update
+    sudo apt install -y wget ca-certificates
+    
+    # Add PostgreSQL signing key
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+    
+    # Add PostgreSQL APT repository
+    RELEASE=$(lsb_release -cs)
+    echo "deb http://apt.postgresql.org/pub/repos/apt/ ${RELEASE}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+    
+    # Update package list
+    sudo apt update
+    
+    # Install PostgreSQL 15 and contrib packages
     sudo apt install -y \
-        postgresql \
-        postgresql-contrib \
-        postgresql-client
+        postgresql-15 \
+        postgresql-contrib-15 \
+        postgresql-client-15 \
+        postgresql-15-dev
+    
+    # Update alternatives to make pg 15 default
+    sudo update-alternatives --install /usr/bin/postgres postgres /usr/lib/postgresql/15/bin/postgres 150
+    sudo update-alternatives --install /usr/bin/psql psql /usr/lib/postgresql/15/bin/psql 150
+    sudo update-alternatives --install /usr/bin/pg_dump pg_dump /usr/lib/postgresql/15/bin/pg_dump 150
+    sudo update-alternatives --install /usr/bin/pg_restore pg_restore /usr/lib/postgresql/15/bin/pg_restore 150
+    sudo update-alternatives --install /usr/bin/initdb initdb /usr/lib/postgresql/15/bin/initdb 150
     
     # Verify installation
     if command -v postgres &> /dev/null; then
         PG_VERSION=$(postgres --version | cut -d' ' -f3)
-        print_success "PostgreSQL $PG_VERSION installed successfully"
+        if check_postgresql_version "$PG_VERSION"; then
+            print_success "PostgreSQL $PG_VERSION installed successfully (meets minimum requirements)"
+        else
+            print_error "Installed PostgreSQL $PG_VERSION but still below minimum version"
+            exit 1
+        fi
     else
         print_error "Failed to install PostgreSQL"
         exit 1

@@ -8,6 +8,7 @@ import { InstanceManager } from './src/instance/manager.js';
 import { ConfigManager } from './src/config/manager.js';
 import { displayInstanceTable, displayInstanceDetails, displaySystemStatus, displayConnectionInfo, formatAsJson, formatAsYaml } from './src/utils/display.js';
 import { validateInstanceConfig, isValidInstanceName } from './src/utils/validation.js';
+import { validateSystemForPgForge, checkSystemRequirements, getInstallationInstructions } from './src/utils/system.js';
 
 const program = new Command();
 const instanceManager = new InstanceManager();
@@ -27,9 +28,18 @@ program
   .option('-p, --port <port>', 'specify port number', parseInt)
   .option('--version <version>', 'PostgreSQL version to use')
   .action(async (name, options) => {
-    const spinner = ora('Creating PostgreSQL instance...').start();
+    const spinner = ora('Checking system requirements...').start();
     
     try {
+      // Check system requirements before creating instance
+      const validation = validateSystemForPgForge();
+      if (!validation.ready) {
+        spinner.fail('System requirements not met. Run "pgforge check" for details.');
+        process.exit(1);
+      }
+      
+      spinner.text = 'Creating PostgreSQL instance...';
+      
       if (!name && !options.file) {
         spinner.fail('Instance name is required');
         process.exit(1);
@@ -338,6 +348,109 @@ program
       
     } catch (error) {
       spinner.fail(`Failed to initialize: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+// Check command
+program
+  .command('check')
+  .description('check system requirements and dependencies')
+  .option('--verbose', 'show detailed information')
+  .action(async (options) => {
+    const spinner = ora('Checking system requirements...').start();
+    
+    try {
+      const validation = validateSystemForPgForge();
+      const checks = checkSystemRequirements();
+      
+      spinner.stop();
+      
+      console.log(chalk.bold('System Requirements Check'));
+      console.log('='.repeat(50));
+      console.log();
+      
+      // Show individual requirement checks
+      for (const check of checks) {
+        const status = check.installed ? 
+          (check.satisfiesMinVersion !== false ? chalk.green('✓') : chalk.yellow('⚠')) : 
+          chalk.red('✗');
+        
+        let line = `${status} ${check.requirement.name}`;
+        
+        if (check.installed && check.version) {
+          line += chalk.gray(` (v${check.version})`);
+          
+          if (check.requirement.minVersion) {
+            if (check.satisfiesMinVersion === false) {
+              line += chalk.yellow(` - requires v${check.requirement.minVersion}+`);
+            }
+          }
+        }
+        
+        console.log(line);
+        
+        if (options.verbose && check.error) {
+          console.log(chalk.gray(`    ${check.error}`));
+        }
+      }
+      
+      console.log();
+      
+      // Show overall status
+      if (validation.ready) {
+        console.log(chalk.green('✓ System is ready for PgForge'));
+      } else {
+        console.log(chalk.red('✗ System requires attention before using PgForge'));
+        
+        if (validation.issues.length > 0) {
+          console.log();
+          console.log(chalk.bold('Issues to resolve:'));
+          validation.issues.forEach(issue => {
+            console.log(chalk.red(`  • ${issue}`));
+          });
+        }
+      }
+      
+      if (validation.warnings.length > 0) {
+        console.log();
+        console.log(chalk.bold('Warnings:'));
+        validation.warnings.forEach(warning => {
+          console.log(chalk.yellow(`  • ${warning}`));
+        });
+      }
+      
+      // Show installation instructions if needed
+      if (!validation.ready) {
+        console.log();
+        console.log(chalk.bold('Installation Instructions:'));
+        console.log(chalk.gray('To install PostgreSQL 15.3+ with contrib packages:'));
+        console.log();
+        
+        const instructions = getInstallationInstructions();
+        if (instructions.postgresql.length > 0) {
+          instructions.postgresql.forEach(cmd => {
+            if (cmd.startsWith('#')) {
+              console.log(chalk.gray(cmd));
+            } else {
+              console.log(chalk.cyan(cmd));
+            }
+          });
+          console.log();
+          instructions.postgresqlContrib.forEach(cmd => {
+            console.log(chalk.cyan(cmd));
+          });
+        } else {
+          console.log(chalk.yellow('Manual installation required - package manager not detected'));
+          console.log(chalk.gray('Please visit: https://www.postgresql.org/download/'));
+        }
+        
+        console.log();
+        console.log(chalk.gray('After installation, run: pgforge check'));
+      }
+      
+    } catch (error) {
+      spinner.fail(`Failed to check system requirements: ${error.message}`);
       process.exit(1);
     }
   });
