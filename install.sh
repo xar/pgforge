@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 
-# PgForge Installation Script for Ubuntu
-# Usage: curl -fsSL https://raw.githubusercontent.com/xar/pgforge/main/install.sh | bash
+# PgForge Installation Script
+# Usage: curl -fsSL https://raw.githubusercontent.com/xar/pgforge.dev/main/install.sh | bash
+# Update: curl -fsSL https://raw.githubusercontent.com/xar/pgforge.dev/main/install.sh | bash -s -- --update
 
-PGFORGE_VERSION="0.1.0"
+REPO="xar/pgforge.dev"
 INSTALL_DIR="/usr/local/bin"
-BUN_VERSION="1.0.0"
+BINARY_NAME="pgforge"
+GITHUB_API="https://api.github.com/repos/$REPO"
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,311 +33,320 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-check_requirements() {
-    print_info "Checking system requirements..."
-    
-    # Check if running on Ubuntu/Debian
-    if ! command -v apt &> /dev/null; then
-        print_error "This installer requires apt package manager (Ubuntu/Debian)"
-        exit 1
-    fi
-    
-    # Check architecture
-    ARCH=$(uname -m)
-    case $ARCH in
-        x86_64)
-            BUN_ARCH="x64"
-            ;;
-        aarch64|arm64)
-            BUN_ARCH="aarch64"
-            ;;
-        *)
-            print_error "Unsupported architecture: $ARCH"
+detect_platform() {
+    local platform
+    case "$(uname -s)" in
+        Linux*)     platform=linux;;
+        Darwin*)    platform=darwin;;
+        *)          
+            print_error "Unsupported platform: $(uname -s)"
             exit 1
             ;;
     esac
-    
-    print_success "System requirements met"
+    echo "$platform"
 }
 
-install_dependencies() {
-    print_info "Installing system dependencies..."
-    
-    # Update package list
-    sudo apt update
-    
-    # Install required packages
-    sudo apt install -y \
-        curl \
-        unzip \
-        ca-certificates \
-        gnupg \
-        lsb-release
-    
-    print_success "System dependencies installed"
-}
-
-install_bun() {
-    print_info "Installing Bun runtime..."
-    
-    # Check if Bun is already installed
-    if command -v bun &> /dev/null; then
-        BUN_CURRENT=$(bun --version)
-        print_info "Bun $BUN_CURRENT is already installed"
-        return 0
-    fi
-    
-    # Install Bun
-    curl -fsSL https://bun.sh/install | bash
-    
-    # Add Bun to PATH for current session
-    export PATH="$HOME/.bun/bin:$PATH"
-    
-    # Verify installation
-    if command -v bun &> /dev/null; then
-        BUN_INSTALLED=$(bun --version)
-        print_success "Bun $BUN_INSTALLED installed successfully"
-    else
-        print_error "Failed to install Bun"
-        exit 1
-    fi
-}
-
-check_postgresql_version() {
-    local version="$1"
-    local min_version="15.3"
-    
-    # Compare versions using sort -V
-    if [[ "$(printf '%s\n' "$min_version" "$version" | sort -V | head -n1)" = "$min_version" ]]; then
-        return 0  # Version is >= 15.3
-    else
-        return 1  # Version is < 15.3
-    fi
-}
-
-install_postgresql() {
-    print_info "Installing PostgreSQL..."
-    
-    # Check if PostgreSQL is already installed
-    if command -v postgres &> /dev/null; then
-        PG_VERSION=$(postgres --version | cut -d' ' -f3)
-        print_info "PostgreSQL $PG_VERSION is already installed"
-        
-        # Check if version meets minimum requirements
-        if check_postgresql_version "$PG_VERSION"; then
-            print_success "PostgreSQL version meets minimum requirements (15.3+)"
-        else
-            print_warning "PostgreSQL $PG_VERSION is below minimum required version 15.3"
-            print_info "Installing PostgreSQL 15 from official repository..."
-            install_postgresql_15
-        fi
-        return 0
-    fi
-    
-    # Install PostgreSQL 15+ from official repository
-    install_postgresql_15
-}
-
-install_postgresql_15() {
-    print_info "Adding PostgreSQL official APT repository..."
-    
-    # Install required packages for repository setup
-    sudo apt update
-    sudo apt install -y wget ca-certificates
-    
-    # Add PostgreSQL signing key
-    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-    
-    # Add PostgreSQL APT repository
-    RELEASE=$(lsb_release -cs)
-    echo "deb http://apt.postgresql.org/pub/repos/apt/ ${RELEASE}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-    
-    # Update package list
-    sudo apt update
-    
-    # Install PostgreSQL 15 and contrib packages
-    sudo apt install -y \
-        postgresql-15 \
-        postgresql-contrib-15 \
-        postgresql-client-15 \
-        postgresql-15-dev
-    
-    # Update alternatives to make pg 15 default
-    sudo update-alternatives --install /usr/bin/postgres postgres /usr/lib/postgresql/15/bin/postgres 150
-    sudo update-alternatives --install /usr/bin/psql psql /usr/lib/postgresql/15/bin/psql 150
-    sudo update-alternatives --install /usr/bin/pg_dump pg_dump /usr/lib/postgresql/15/bin/pg_dump 150
-    sudo update-alternatives --install /usr/bin/pg_restore pg_restore /usr/lib/postgresql/15/bin/pg_restore 150
-    sudo update-alternatives --install /usr/bin/initdb initdb /usr/lib/postgresql/15/bin/initdb 150
-    
-    # Verify installation
-    if command -v postgres &> /dev/null; then
-        PG_VERSION=$(postgres --version | cut -d' ' -f3)
-        if check_postgresql_version "$PG_VERSION"; then
-            print_success "PostgreSQL $PG_VERSION installed successfully (meets minimum requirements)"
-        else
-            print_error "Installed PostgreSQL $PG_VERSION but still below minimum version"
+detect_arch() {
+    local arch
+    case "$(uname -m)" in
+        x86_64)     arch=x64;;
+        aarch64|arm64) arch=arm64;;
+        *)          
+            print_error "Unsupported architecture: $(uname -m)"
             exit 1
-        fi
+            ;;
+    esac
+    echo "$arch"
+}
+
+get_latest_release() {
+    print_info "Fetching latest release information..."
+    
+    local release_data
+    if command -v curl >/dev/null 2>&1; then
+        release_data=$(curl -s "$GITHUB_API/releases/latest" 2>/dev/null)
+    elif command -v wget >/dev/null 2>&1; then
+        release_data=$(wget -qO- "$GITHUB_API/releases/latest" 2>/dev/null)
     else
-        print_error "Failed to install PostgreSQL"
+        print_error "Neither curl nor wget is available. Please install one of them."
         exit 1
     fi
     
-    # Stop default PostgreSQL service (we'll manage instances manually)
-    sudo systemctl stop postgresql || true
-    sudo systemctl disable postgresql || true
+    if [ -z "$release_data" ]; then
+        print_error "Failed to fetch release information"
+        exit 1
+    fi
     
-    print_info "Default PostgreSQL service disabled (PgForge will manage instances)"
+    # Extract tag name (version)
+    local version
+    version=$(echo "$release_data" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -n1)
+    
+    if [ -z "$version" ]; then
+        print_error "Could not determine latest version"
+        exit 1
+    fi
+    
+    echo "$version"
 }
 
-download_pgforge() {
-    print_info "Downloading PgForge..."
+get_current_version() {
+    if command -v "$BINARY_NAME" >/dev/null 2>&1; then
+        "$BINARY_NAME" --version 2>/dev/null | head -n1 | awk '{print $NF}' || echo ""
+    else
+        echo ""
+    fi
+}
+
+version_compare() {
+    local version1="$1"
+    local version2="$2"
+    
+    # Remove 'v' prefix if present
+    version1=$(echo "$version1" | sed 's/^v//')
+    version2=$(echo "$version2" | sed 's/^v//')
+    
+    if [ "$version1" = "$version2" ]; then
+        return 0  # Equal
+    fi
+    
+    # Use sort -V for version comparison
+    if printf '%s\n%s' "$version1" "$version2" | sort -V -C 2>/dev/null; then
+        return 1  # version1 < version2
+    else
+        return 2  # version1 > version2
+    fi
+}
+
+download_binary() {
+    local version="$1"
+    local platform="$2"
+    local arch="$3"
+    
+    print_info "Downloading PgForge $version for $platform-$arch..."
+    
+    # Construct download URL - adjust this based on your release naming convention
+    local binary_name="${BINARY_NAME}-${platform}-${arch}"
+    if [ "$platform" = "darwin" ]; then
+        binary_name="${BINARY_NAME}-macos-${arch}"
+    fi
+    
+    local download_url="https://github.com/$REPO/releases/download/$version/$binary_name"
     
     # Create temporary directory
-    TEMP_DIR=$(mktemp -d)
-    cd "$TEMP_DIR"
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local temp_file="$temp_dir/$BINARY_NAME"
     
-    # Download the latest release or build from source
-    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        # If we have GitHub token, try to download from releases
-        print_info "Attempting to download from GitHub releases..."
-        curl -L -H "Authorization: token $GITHUB_TOKEN" \
-             -o pgforge.tar.gz \
-             "https://api.github.com/repos/xar/pgforge/tarball/main" || {
-            print_warning "Failed to download from releases, building from source..."
-            download_and_build_source
-        }
-    else
-        download_and_build_source
+    print_info "Downloading from: $download_url"
+    
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -L -o "$temp_file" "$download_url" 2>/dev/null; then
+            print_error "Failed to download binary from GitHub releases"
+            rm -rf "$temp_dir"
+            exit 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget -O "$temp_file" "$download_url" 2>/dev/null; then
+            print_error "Failed to download binary from GitHub releases"
+            rm -rf "$temp_dir"
+            exit 1
+        fi
     fi
-}
-
-download_and_build_source() {
-    print_info "Building PgForge from source..."
     
-    # Download source code
-    curl -L -o pgforge.tar.gz \
-         "https://github.com/xar/pgforge/archive/main.tar.gz"
-    
-    # Extract
-    tar -xzf pgforge.tar.gz
-    cd pgforge-main
-    
-    # Install dependencies
-    bun install
-    
-    # Build binary
-    bun run build:binary
-    
-    # Move binary to temp location
-    mv pgforge ../pgforge-binary
-}
-
-install_pgforge_binary() {
-    print_info "Installing PgForge binary..."
-    
-    # Make sure we have the binary
-    if [[ ! -f "pgforge-binary" ]]; then
-        print_error "PgForge binary not found"
+    # Verify download
+    if [ ! -f "$temp_file" ] || [ ! -s "$temp_file" ]; then
+        print_error "Downloaded file is empty or missing"
+        rm -rf "$temp_dir"
         exit 1
+    fi
+    
+    echo "$temp_file"
+}
+
+install_binary() {
+    local temp_file="$1"
+    local is_update="$2"
+    
+    if [ "$is_update" = "true" ]; then
+        print_info "Updating PgForge binary..."
+    else
+        print_info "Installing PgForge binary..."
     fi
     
     # Make binary executable
-    chmod +x pgforge-binary
+    chmod +x "$temp_file"
     
-    # Install to system location
-    sudo mv pgforge-binary "$INSTALL_DIR/pgforge"
+    # Check if we need sudo for installation
+    local use_sudo=""
+    if [ ! -w "$INSTALL_DIR" ]; then
+        use_sudo="sudo"
+        print_info "Administrator privileges required for installation to $INSTALL_DIR"
+    fi
+    
+    # Install binary
+    $use_sudo mv "$temp_file" "$INSTALL_DIR/$BINARY_NAME"
     
     # Verify installation
-    if command -v pgforge &> /dev/null; then
-        PGFORGE_VERSION_INSTALLED=$(pgforge --version)
-        print_success "PgForge installed successfully: $PGFORGE_VERSION_INSTALLED"
+    if command -v "$BINARY_NAME" >/dev/null 2>&1; then
+        local installed_version
+        installed_version=$("$BINARY_NAME" --version 2>/dev/null | head -n1 | awk '{print $NF}' || echo "unknown")
+        if [ "$is_update" = "true" ]; then
+            print_success "PgForge updated successfully to version $installed_version"
+        else
+            print_success "PgForge installed successfully: $installed_version"
+        fi
     else
-        print_error "Failed to install PgForge binary"
+        print_error "Installation verification failed"
         exit 1
     fi
 }
 
-setup_directories() {
-    print_info "Setting up PgForge directories..."
+check_dependencies() {
+    print_info "Checking dependencies..."
     
-    # Create system directories with proper permissions
-    sudo mkdir -p /var/lib/postgresql/pgforge
-    sudo mkdir -p /var/log/postgresql/pgforge
-    sudo mkdir -p /var/backups/postgresql/pgforge
-    
-    # Set ownership to current user (for development) or postgres user (for production)
-    if [[ "$EUID" -eq 0 ]]; then
-        # Running as root, use postgres user
-        sudo chown -R postgres:postgres /var/lib/postgresql/pgforge
-        sudo chown -R postgres:postgres /var/log/postgresql/pgforge
-        sudo chown -R postgres:postgres /var/backups/postgresql/pgforge
-    else
-        # Running as regular user, make directories accessible
-        sudo chown -R $USER:$USER /var/lib/postgresql/pgforge
-        sudo chown -R $USER:$USER /var/log/postgresql/pgforge
-        sudo chown -R $USER:$USER /var/backups/postgresql/pgforge
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        print_error "Neither curl nor wget is available"
+        
+        case "$(detect_platform)" in
+            linux)
+                print_info "On Ubuntu/Debian: sudo apt install curl"
+                print_info "On RHEL/CentOS: sudo yum install curl"
+                ;;
+            darwin)
+                print_info "On macOS: curl should be pre-installed, or install via Homebrew: brew install curl"
+                ;;
+        esac
+        exit 1
     fi
     
-    print_success "Directories created and configured"
+    print_success "Dependencies satisfied"
 }
 
-initialize_pgforge() {
-    print_info "Initializing PgForge..."
-    
-    # Initialize PgForge configuration
-    pgforge init
-    
-    print_success "PgForge initialized"
-}
-
-cleanup() {
-    print_info "Cleaning up temporary files..."
-    
-    # Remove temporary directory
-    if [[ -n "${TEMP_DIR:-}" ]] && [[ -d "$TEMP_DIR" ]]; then
-        rm -rf "$TEMP_DIR"
-    fi
-    
-    print_success "Cleanup completed"
+show_usage() {
+    echo "PgForge Installation Script"
+    echo ""
+    echo "Usage:"
+    echo "  Install:  curl -fsSL https://raw.githubusercontent.com/xar/pgforge.dev/main/install.sh | bash"
+    echo "  Update:   curl -fsSL https://raw.githubusercontent.com/xar/pgforge.dev/main/install.sh | bash -s -- --update"
+    echo ""
+    echo "Options:"
+    echo "  --update    Update existing installation"
+    echo "  --help      Show this help message"
+    echo ""
 }
 
 print_completion_message() {
+    local is_update="$1"
+    local current_version="$2"
+    
     echo ""
-    echo "🎉 PgForge installation completed successfully!"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Create your first PostgreSQL instance:"
-    echo "     pgforge create mydb"
-    echo ""
-    echo "  2. Start the instance:"
-    echo "     pgforge start mydb"
-    echo ""
-    echo "  3. Connect to your database:"
-    echo "     pgforge connection-string mydb"
-    echo ""
+    if [ "$is_update" = "true" ]; then
+        echo "🎉 PgForge updated successfully to $current_version!"
+    else
+        echo "🎉 PgForge installation completed successfully!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Create your first PostgreSQL instance:"
+        echo "     pgforge create mydb"
+        echo ""
+        echo "  2. Start the instance:"
+        echo "     pgforge start mydb"
+        echo ""
+        echo "  3. Connect to your database:"
+        echo "     pgforge connection-string mydb"
+        echo ""
+    fi
     echo "For more information, run: pgforge --help"
     echo ""
-    echo "Documentation: https://github.com/xar/pgforge"
+    echo "Documentation: https://github.com/$REPO"
     echo ""
+}
+
+cleanup() {
+    if [ -n "${temp_file:-}" ] && [ -f "$temp_file" ]; then
+        rm -f "$temp_file"
+    fi
 }
 
 main() {
-    echo "🔨 PgForge Installer v$PGFORGE_VERSION"
-    echo "Installing PgForge PostgreSQL Instance Manager..."
+    local is_update=false
+    
+    # Parse arguments
+    for arg in "$@"; do
+        case $arg in
+            --update)
+                is_update=true
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $arg"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Set up cleanup trap
+    trap cleanup EXIT
+    
+    if [ "$is_update" = "true" ]; then
+        echo "🔄 PgForge Updater"
+        echo "Updating PgForge PostgreSQL Instance Manager..."
+    else
+        echo "🔨 PgForge Installer"
+        echo "Installing PgForge PostgreSQL Instance Manager..."
+    fi
     echo ""
     
-    check_requirements
-    install_dependencies
-    install_bun
-    install_postgresql
-    download_pgforge
-    install_pgforge_binary
-    setup_directories
-    initialize_pgforge
-    cleanup
-    print_completion_message
+    check_dependencies
+    
+    local platform arch latest_version current_version
+    platform=$(detect_platform)
+    arch=$(detect_arch)
+    latest_version=$(get_latest_release)
+    current_version=$(get_current_version)
+    
+    print_info "Latest version: $latest_version"
+    
+    if [ "$is_update" = "true" ]; then
+        if [ -z "$current_version" ]; then
+            print_error "PgForge is not currently installed. Use install mode instead."
+            exit 1
+        fi
+        
+        print_info "Current version: $current_version"
+        
+        # Compare versions
+        version_compare "$current_version" "$latest_version"
+        case $? in
+            0)
+                print_success "PgForge is already up to date ($current_version)"
+                exit 0
+                ;;
+            1)
+                print_info "Update available: $current_version → $latest_version"
+                ;;
+            2)
+                print_warning "Current version ($current_version) is newer than latest release ($latest_version)"
+                print_info "Proceeding with installation of latest release..."
+                ;;
+        esac
+    else
+        if [ -n "$current_version" ]; then
+            print_warning "PgForge is already installed (version $current_version)"
+            print_info "Use --update flag to update to the latest version"
+            exit 0
+        fi
+    fi
+    
+    local temp_file
+    temp_file=$(download_binary "$latest_version" "$platform" "$arch")
+    install_binary "$temp_file" "$is_update"
+    print_completion_message "$is_update" "$latest_version"
 }
 
-# Run main function
+# Run main function with all arguments
 main "$@"
