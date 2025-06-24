@@ -289,6 +289,8 @@ export class ConfigManager {
         },
         testing: {
           network: {
+            port: 5433,
+            bindAddress: '127.0.0.1',
             maxConnections: 50,
           },
           backup: {
