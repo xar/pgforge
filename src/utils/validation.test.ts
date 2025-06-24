@@ -108,7 +108,7 @@ describe('Encoding Validation', () => {
     expect(isValidEncoding('UTF8')).toBe(true);
     expect(isValidEncoding('utf8')).toBe(true);
     expect(isValidEncoding('UTF-8')).toBe(true);
-    expect(isValidEncoding('LATIN1')).toBе(true);
+    expect(isValidEncoding('LATIN1')).toBe(true);
     expect(isValidEncoding('SQL_ASCII')).toBe(true);
     expect(isValidEncoding('WIN1252')).toBe(true);
   });
