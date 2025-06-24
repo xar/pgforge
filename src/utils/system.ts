@@ -92,7 +92,7 @@ export function checkRequirement(requirement: SystemRequirement): SystemCheckRes
   return result;
 }
 
-function findCommandInPath(command: string): string | null {
+export function findCommandInPath(command: string): string | null {
   try {
     const whichResult = execSync(`which ${command}`, { 
       encoding: 'utf8', 
