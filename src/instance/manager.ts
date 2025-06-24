@@ -375,13 +375,24 @@ export class InstanceManager {
   }
 
   private async findPostgreSQLBinary(binary: string, version: string): Promise<string> {
-    // Common PostgreSQL installation paths
+    // Extract major version from full version (e.g., "15.13" -> "15")
+    const majorVersion = version.split('.')[0];
+    
+    // Common PostgreSQL installation paths, ordered by preference
     const paths = [
+      // Try exact version first
       `/usr/lib/postgresql/${version}/bin/${binary}`,
       `/usr/pgsql-${version}/bin/${binary}`,
       `/opt/postgresql/${version}/bin/${binary}`,
+      // Try major version
+      `/usr/lib/postgresql/${majorVersion}/bin/${binary}`,
+      `/usr/pgsql-${majorVersion}/bin/${binary}`,
+      `/opt/postgresql/${majorVersion}/bin/${binary}`,
+      // Try generic paths
       `/usr/bin/${binary}`,
       `/usr/local/bin/${binary}`,
+      `/usr/local/pgsql/bin/${binary}`,
+      `/opt/postgresql/bin/${binary}`,
     ];
 
     for (const path of paths) {
@@ -393,7 +404,23 @@ export class InstanceManager {
       }
     }
 
-    throw new Error(`PostgreSQL binary '${binary}' not found for version ${version}`);
+    // If we can't find the binary in version-specific paths, try to find it dynamically
+    // using the same logic as the system check
+    try {
+      const { execSync } = await import('child_process');
+      const whichResult = execSync(`which ${binary}`, { 
+        encoding: 'utf8', 
+        stdio: 'pipe' 
+      }).trim();
+      
+      if (whichResult) {
+        return whichResult;
+      }
+    } catch {
+      // which command failed, continue with original error
+    }
+
+    throw new Error(`PostgreSQL binary '${binary}' not found for version ${version}. Tried paths: ${paths.join(', ')}`);
   }
 
   private async createBackup(config: PostgreSQLInstanceConfig): Promise<void> {

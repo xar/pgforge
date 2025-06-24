@@ -1,8 +1,11 @@
 import { readFile, writeFile, mkdir, access } from 'fs/promises';
+import { existsSync } from 'fs';
+import { execSync } from 'child_process';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import * as YAML from 'yaml';
 import type { PostgreSQLInstanceConfig, GlobalConfig, InstanceTemplate } from './types.js';
+import { getCommandVersion, findCommandInPath } from '../utils/system.js';
 
 export class ConfigManager {
   private configDir: string;
@@ -85,6 +88,73 @@ export class ConfigManager {
     }
   }
 
+  private detectInstalledPostgreSQLVersion(): string | null {
+    // Try to detect the installed PostgreSQL version using the same logic as the check command
+    try {
+      // First try standard command in PATH
+      let commandPath = findCommandInPath('postgres');
+      
+      // If not found in PATH, try PostgreSQL-specific locations
+      if (!commandPath) {
+        commandPath = this.findPostgreSQLCommand('postgres');
+      }
+
+      if (commandPath) {
+        return getCommandVersion('postgres', commandPath);
+      }
+    } catch (error) {
+      // Fallback to detecting via initdb if postgres binary isn't found
+      try {
+        let commandPath = findCommandInPath('initdb');
+        if (!commandPath) {
+          commandPath = this.findPostgreSQLCommand('initdb');
+        }
+        if (commandPath) {
+          return getCommandVersion('initdb', commandPath);
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    return null;
+  }
+
+  private findPostgreSQLCommand(command: string): string | null {
+    // Common PostgreSQL installation paths
+    const commonPaths = [
+      // Ubuntu/Debian style
+      '/usr/lib/postgresql/15/bin',
+      '/usr/lib/postgresql/14/bin',
+      '/usr/lib/postgresql/13/bin',
+      '/usr/lib/postgresql/12/bin',
+      // RHEL/CentOS style
+      '/usr/pgsql-15/bin',
+      '/usr/pgsql-14/bin',
+      '/usr/pgsql-13/bin',
+      '/usr/pgsql-12/bin',
+      // Alternative locations
+      '/usr/local/pgsql/bin',
+      '/opt/postgresql/bin',
+      '/usr/bin'
+    ];
+
+    for (const path of commonPaths) {
+      const fullPath = `${path}/${command}`;
+      if (existsSync(fullPath)) {
+        try {
+          // Test if the binary is executable
+          execSync(`test -x "${fullPath}"`, { stdio: 'pipe' });
+          return fullPath;
+        } catch {
+          // Binary exists but not executable
+          continue;
+        }
+      }
+    }
+
+    return null;
+  }
+
   createInstanceConfig(
     name: string,
     options: {
@@ -97,7 +167,7 @@ export class ConfigManager {
     const template = options.template ? this.getTemplate(options.template) : null;
     
     const defaultPort = options.port || 5432;
-    const version = options.version || globalConfig.global.postgresql.defaultVersion;
+    const version = options.version || this.detectInstalledPostgreSQLVersion() || globalConfig.global.postgresql.defaultVersion;
 
     const config: PostgreSQLInstanceConfig = {
       apiVersion: 'v1',
