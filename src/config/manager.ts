@@ -5,7 +5,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import * as YAML from 'yaml';
 import type { PostgreSQLInstanceConfig, GlobalConfig, InstanceTemplate } from './types.js';
-import { getCommandVersion, findCommandInPath } from '../utils/system.js';
+import { getCommandVersion, findCommandInPath, getUserDirectories } from '../utils/system.js';
 
 export class ConfigManager {
   private configDir: string;
@@ -236,13 +236,15 @@ export class ConfigManager {
   }
 
   private getDefaultGlobalConfig(): GlobalConfig {
+    const userDirs = getUserDirectories();
+    
     return {
       apiVersion: 'v1',
       kind: 'Configuration',
       global: {
-        dataRoot: '/var/lib/postgresql/pgforge',
-        logRoot: '/var/log/postgresql/pgforge',
-        backupRoot: '/var/backups/postgresql/pgforge',
+        dataRoot: userDirs.dataRoot,
+        logRoot: userDirs.logRoot,
+        backupRoot: userDirs.backupRoot,
         postgresql: {
           packageManager: 'apt',
           versions: ['15.3', '14.8', '13.11'],

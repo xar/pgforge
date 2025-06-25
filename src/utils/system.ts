@@ -1,5 +1,7 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 export interface SystemRequirement {
   name: string;
@@ -427,4 +429,25 @@ export function validateSystemForPgForge(): {
   }
 
   return result;
+}
+
+/**
+ * Get user-local directories following XDG Base Directory specification.
+ * This avoids permission issues with system directories like /var/lib/postgresql.
+ */
+export function getUserDirectories(): {
+  dataRoot: string;
+  logRoot: string;
+  backupRoot: string;
+} {
+  // Follow XDG Base Directory specification
+  // XDG_DATA_HOME defaults to ~/.local/share
+  const xdgDataHome = process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share');
+  const pgforgeDataDir = join(xdgDataHome, 'pgforge');
+  
+  return {
+    dataRoot: pgforgeDataDir,
+    logRoot: join(pgforgeDataDir, 'logs'), 
+    backupRoot: join(pgforgeDataDir, 'backups'),
+  };
 }

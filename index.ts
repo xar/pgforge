@@ -8,7 +8,7 @@ import { InstanceManager } from './src/instance/manager.js';
 import { ConfigManager } from './src/config/manager.js';
 import { displayInstanceTable, displayInstanceDetails, displaySystemStatus, displayConnectionInfo, formatAsJson, formatAsYaml } from './src/utils/display.js';
 import { validateInstanceConfig, isValidInstanceName } from './src/utils/validation.js';
-import { validateSystemForPgForge, checkSystemRequirements, getInstallationInstructions } from './src/utils/system.js';
+import { validateSystemForPgForge, checkSystemRequirements, getInstallationInstructions, getUserDirectories } from './src/utils/system.js';
 
 const program = new Command();
 const instanceManager = new InstanceManager();
@@ -316,13 +316,14 @@ program
       try {
         await configManager.getGlobalConfig();
       } catch {
+        const userDirs = getUserDirectories();
         const defaultConfig = {
           apiVersion: 'v1',
           kind: 'Configuration',
           global: {
-            dataRoot: '/var/lib/postgresql/pgforge',
-            logRoot: '/var/log/postgresql/pgforge', 
-            backupRoot: '/var/backups/postgresql/pgforge',
+            dataRoot: userDirs.dataRoot,
+            logRoot: userDirs.logRoot, 
+            backupRoot: userDirs.backupRoot,
             postgresql: {
               packageManager: 'apt' as const,
               versions: ['15.3', '14.8', '13.11'],
