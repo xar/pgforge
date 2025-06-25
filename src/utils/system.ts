@@ -79,14 +79,14 @@ export function checkRequirement(requirement: SystemRequirement): SystemCheckRes
   // Get version information
   try {
     const version = getCommandVersion(requirement.command, commandPath);
-    result.version = version;
+    result.version = version ?? undefined;
 
     // Check minimum version if specified
     if (requirement.minVersion && version) {
       result.satisfiesMinVersion = compareVersions(version, requirement.minVersion) >= 0;
     }
   } catch (versionError) {
-    result.error = `Could not determine version: ${versionError.message}`;
+    result.error = `Could not determine version: ${versionError instanceof Error ? versionError.message : String(versionError)}`;
   }
 
   return result;
@@ -159,7 +159,7 @@ function findPostgreSQLServerBinary(): string | null {
       if (execStart) {
         // Extract binary path from systemctl output
         const binaryMatch = execStart.match(/([^\s]+postgres[^\s]*)/);
-        if (binaryMatch && existsSync(binaryMatch[1])) {
+        if (binaryMatch && binaryMatch[1] && existsSync(binaryMatch[1])) {
           return binaryMatch[1];
         }
       }
@@ -215,7 +215,7 @@ export function getCommandVersion(command: string, commandPath?: string): string
 
     // Extract version number from output
     const versionMatch = versionOutput.match(/(\d+\.\d+(?:\.\d+)?)/);
-    return versionMatch ? versionMatch[1] : null;
+    return versionMatch && versionMatch[1] ? versionMatch[1] : null;
   } catch (error) {
     return null;
   }

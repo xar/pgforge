@@ -76,7 +76,7 @@ program
       console.log(chalk.gray(`  View details: ${chalk.white('pgforge show ' + config.metadata.name)}`));
       
     } catch (error) {
-      spinner.fail(`Failed to create instance: ${error.message}`);
+      spinner.fail(`Failed to create instance: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -112,7 +112,7 @@ program
       }
       
     } catch (error) {
-      spinner.fail(`Failed to list instances: ${error.message}`);
+      spinner.fail(`Failed to list instances: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -136,7 +136,7 @@ program
       }
       
     } catch (error) {
-      spinner.fail(`Failed to start instance: ${error.message}`);
+      spinner.fail(`Failed to start instance: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -153,7 +153,7 @@ program
       spinner.succeed(`Instance '${name}' stopped successfully`);
       
     } catch (error) {
-      spinner.fail(`Failed to stop instance: ${error.message}`);
+      spinner.fail(`Failed to stop instance: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -170,7 +170,7 @@ program
       spinner.succeed(`Instance '${name}' restarted successfully`);
       
     } catch (error) {
-      spinner.fail(`Failed to restart instance: ${error.message}`);
+      spinner.fail(`Failed to restart instance: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -195,7 +195,7 @@ program
       displayInstanceDetails(config);
       
     } catch (error) {
-      spinner.fail(`Failed to show instance details: ${error.message}`);
+      spinner.fail(`Failed to show instance details: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -215,7 +215,7 @@ program
       spinner.succeed(`Instance '${name}' removed successfully`);
       
     } catch (error) {
-      spinner.fail(`Failed to remove instance: ${error.message}`);
+      spinner.fail(`Failed to remove instance: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -240,7 +240,7 @@ program
         displayInstanceDetails(config);
         
       } catch (error) {
-        spinner.fail(`Failed to get status: ${error.message}`);
+        spinner.fail(`Failed to get status: ${error instanceof Error ? error.message : String(error)}`);
         process.exit(1);
       }
     } else {
@@ -253,7 +253,7 @@ program
           displayInstanceTable(instances);
         }
       } catch (error) {
-        console.log(chalk.red(`Failed to load instances: ${error.message}`));
+        console.log(chalk.red(`Failed to load instances: ${error instanceof Error ? error.message : String(error)}`));
       }
     }
   });
@@ -297,7 +297,7 @@ program
       }
       
     } catch (error) {
-      console.log(chalk.red(`Failed to get connection info: ${error.message}`));
+      console.log(chalk.red(`Failed to get connection info: ${error instanceof Error ? error.message : String(error)}`));
       process.exit(1);
     }
   });
@@ -347,7 +347,7 @@ program
       console.log(chalk.gray(`  List instances: ${chalk.white('pgforge list')}`));
       
     } catch (error) {
-      spinner.fail(`Failed to initialize: ${error.message}`);
+      spinner.fail(`Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -450,7 +450,7 @@ program
       }
       
     } catch (error) {
-      spinner.fail(`Failed to check system requirements: ${error.message}`);
+      spinner.fail(`Failed to check system requirements: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });

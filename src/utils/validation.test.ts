@@ -234,7 +234,7 @@ describe('Port Availability Validation', () => {
   test('should detect port conflicts', () => {
     const errors = validatePortAvailable(5432, existingInstances);
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0].field).toBe('spec.network.port');
+    expect(errors[0]?.field).toBe('spec.network.port');
   });
 
   test('should allow available ports', () => {
