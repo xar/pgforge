@@ -202,7 +202,7 @@ export class ConfigManager {
         },
         security: {
           ssl: {
-            enabled: true,
+            enabled: false,
           },
           authentication: {
             method: 'md5',
