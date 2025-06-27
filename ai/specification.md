@@ -42,7 +42,7 @@ metadata:
     created: "2025-06-23T10:30:00Z"
 
 spec:
-  version: "15.3"
+  version: "17.0"
 
   network:
     port: 5433
@@ -128,7 +128,7 @@ status:
   pid: 12345
   startTime: "2025-06-23T10:35:00Z"
   lastRestart: "2025-06-23T08:00:00Z"
-  version: "15.3"
+  version: "17.0"
   dataSize: "2.3GB"
   connections: 12
   health:
@@ -160,10 +160,10 @@ global:
   postgresql:
     packageManager: "apt" # apt, yum, brew, manual
     versions:
-      - "15.3"
-      - "14.8"
-      - "13.11"
-    defaultVersion: "15.3"
+      - "17.0"
+      - "16.7"
+      - "15.10"
+    defaultVersion: "17.0"
 
   security:
     defaultSSL: true

@@ -25,7 +25,7 @@ export const SYSTEM_REQUIREMENTS: SystemRequirement[] = [
     command: 'postgres',
     description: 'PostgreSQL database server',
     required: true,
-    minVersion: '15.3'
+    minVersion: '17.0'
   },
   {
     name: 'PostgreSQL Client',
@@ -111,11 +111,15 @@ function findPostgreSQLCommand(command: string): string | null {
   // Common PostgreSQL installation paths
   const commonPaths = [
     // Ubuntu/Debian style
+    '/usr/lib/postgresql/17/bin',
+    '/usr/lib/postgresql/16/bin',
     '/usr/lib/postgresql/15/bin',
     '/usr/lib/postgresql/14/bin',
     '/usr/lib/postgresql/13/bin',
     '/usr/lib/postgresql/12/bin',
     // RHEL/CentOS style
+    '/usr/pgsql-17/bin',
+    '/usr/pgsql-16/bin',
     '/usr/pgsql-15/bin',
     '/usr/pgsql-14/bin',
     '/usr/pgsql-13/bin',
@@ -343,33 +347,33 @@ export function getInstallationInstructions(): {
       'wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -',
       'echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list',
       'sudo apt update',
-      'sudo apt install postgresql-15 postgresql-client-15'
+      'sudo apt install postgresql-17 postgresql-client-17'
     ];
     
     instructions.postgresqlContrib = [
-      'sudo apt install postgresql-contrib-15'
+      'sudo apt install postgresql-contrib-17'
     ];
   } else if (existsSync('/usr/bin/yum')) {
     // CentOS/RHEL
     instructions.postgresql = [
       '# Add PostgreSQL official repository for latest version',
       'sudo yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm',
-      'sudo yum install -y postgresql15-server postgresql15'
+      'sudo yum install -y postgresql17-server postgresql17'
     ];
     
     instructions.postgresqlContrib = [
-      'sudo yum install -y postgresql15-contrib'
+      'sudo yum install -y postgresql17-contrib'
     ];
   } else if (existsSync('/usr/bin/dnf')) {
     // Fedora
     instructions.postgresql = [
       '# Add PostgreSQL official repository for latest version',
       'sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/F-36-x86_64/pgdg-fedora-repo-latest.noarch.rpm',
-      'sudo dnf install -y postgresql15-server postgresql15'
+      'sudo dnf install -y postgresql17-server postgresql17'
     ];
     
     instructions.postgresqlContrib = [
-      'sudo dnf install -y postgresql15-contrib'
+      'sudo dnf install -y postgresql17-contrib'
     ];
   }
 
@@ -425,7 +429,7 @@ export function validateSystemForPgForge(): {
   );
   
   if (missingServerComponents.length > 0) {
-    result.warnings.push('If PostgreSQL is installed, try adding its bin directory to your PATH (e.g., export PATH="/usr/lib/postgresql/15/bin:$PATH")');
+    result.warnings.push('If PostgreSQL is installed, try adding its bin directory to your PATH (e.g., export PATH="/usr/lib/postgresql/17/bin:$PATH")');
   }
 
   return result;

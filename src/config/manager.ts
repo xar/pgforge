@@ -123,11 +123,15 @@ export class ConfigManager {
     // Common PostgreSQL installation paths
     const commonPaths = [
       // Ubuntu/Debian style
+      '/usr/lib/postgresql/17/bin',
+      '/usr/lib/postgresql/16/bin',
       '/usr/lib/postgresql/15/bin',
       '/usr/lib/postgresql/14/bin',
       '/usr/lib/postgresql/13/bin',
       '/usr/lib/postgresql/12/bin',
       // RHEL/CentOS style
+      '/usr/pgsql-17/bin',
+      '/usr/pgsql-16/bin',
       '/usr/pgsql-15/bin',
       '/usr/pgsql-14/bin',
       '/usr/pgsql-13/bin',
@@ -247,8 +251,8 @@ export class ConfigManager {
         backupRoot: userDirs.backupRoot,
         postgresql: {
           packageManager: 'apt',
-          versions: ['15.3', '14.8', '13.11'],
-          defaultVersion: '15.3',
+          versions: ['17.0', '16.7', '15.10'],
+          defaultVersion: '17.0',
         },
       },
       templates: {

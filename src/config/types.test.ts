@@ -12,7 +12,7 @@ describe('Configuration Types', () => {
         annotations: { 'created-by': 'pgforge' }
       },
       spec: {
-        version: '15.3',
+        version: '17.0',
         network: {
           port: 5432,
           bindAddress: '127.0.0.1',
@@ -66,7 +66,7 @@ describe('Configuration Types', () => {
         state: 'running',
         pid: 12345,
         startTime: '2024-01-01T00:00:00Z',
-        version: '15.3',
+        version: '17.0',
         connections: 5
       }
     };
@@ -88,8 +88,8 @@ describe('Configuration Types', () => {
         backupRoot: '/var/backups/postgresql/pgforge',
         postgresql: {
           packageManager: 'apt',
-          versions: ['15.3', '14.8'],
-          defaultVersion: '15.3'
+          versions: ['17.0', '16.7'],
+          defaultVersion: '17.0'
         }
       },
       templates: {
