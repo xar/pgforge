@@ -326,8 +326,8 @@ program
             backupRoot: userDirs.backupRoot,
             postgresql: {
               packageManager: 'apt' as const,
-              versions: ['15.3', '14.8', '13.11'],
-              defaultVersion: '15.3',
+              versions: ['17.0', '16.7', '15.10'],
+              defaultVersion: '17.0',
             },
           },
         };
@@ -425,7 +425,7 @@ program
       if (!validation.ready) {
         console.log();
         console.log(chalk.bold('Installation Instructions:'));
-        console.log(chalk.gray('To install PostgreSQL 15.3+ with contrib packages:'));
+        console.log(chalk.gray('To install PostgreSQL 17.0+ with contrib packages:'));
         console.log();
         
         const instructions = getInstallationInstructions();
