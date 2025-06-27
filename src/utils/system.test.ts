@@ -39,7 +39,7 @@ describe('System Requirements', () => {
   test('should specify minimum version for PostgreSQL Server', () => {
     const postgresReq = SYSTEM_REQUIREMENTS.find(req => req.name === 'PostgreSQL Server');
     expect(postgresReq?.minVersion).toBeTruthy();
-    expect(postgresReq?.minVersion).toBe('15.3');
+    expect(postgresReq?.minVersion).toBe('17.0');
   });
 });
 
