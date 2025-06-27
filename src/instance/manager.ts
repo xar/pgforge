@@ -54,6 +54,9 @@ export class InstanceManager {
     // Initialize PostgreSQL data directory
     await this.initializeDatabase(config);
 
+    // Create socket directory after initdb to avoid conflicts
+    await this.createSocketDirectory(config);
+
     // Generate configuration files
     await this.generateConfigFiles(config);
 
@@ -194,12 +197,9 @@ export class InstanceManager {
   }
 
   private async createInstanceDirectories(config: PostgreSQLInstanceConfig): Promise<void> {
-    const socketDirectory = join(config.spec.storage.dataDirectory, 'sockets');
-    
     const directories = [
       config.spec.storage.dataDirectory,
       config.spec.storage.logDirectory,
-      socketDirectory, // Add socket directory to avoid permission issues
     ];
 
     if (config.spec.storage.archiveDirectory) {
@@ -215,8 +215,21 @@ export class InstanceManager {
     }
   }
 
+  private async createSocketDirectory(config: PostgreSQLInstanceConfig): Promise<void> {
+    const socketDirectory = join(config.spec.storage.dataDirectory, 'sockets');
+    
+    try {
+      await access(socketDirectory);
+    } catch {
+      await mkdir(socketDirectory, { recursive: true });
+    }
+  }
+
   private async initializeDatabase(config: PostgreSQLInstanceConfig): Promise<void> {
     const initdbPath = await this.findPostgreSQLBinary('initdb', config.spec.version);
+    
+    // Check if data directory exists and is not empty
+    await this.ensureDataDirectoryIsEmpty(config.spec.storage.dataDirectory);
     
     const command = [
       initdbPath,
@@ -231,6 +244,30 @@ export class InstanceManager {
       await execAsync(command);
     } catch (error) {
       throw new Error(`Failed to initialize database: ${error}`);
+    }
+  }
+
+  private async ensureDataDirectoryIsEmpty(dataDirectory: string): Promise<void> {
+    try {
+      await access(dataDirectory);
+      
+      // Directory exists, check if it's empty
+      const { readdir } = await import('fs/promises');
+      const files = await readdir(dataDirectory);
+      
+      if (files.length > 0) {
+        throw new Error(
+          `Data directory '${dataDirectory}' exists but is not empty. ` +
+          `This may be from a previous failed installation. ` +
+          `Please remove the directory and try again: rm -rf "${dataDirectory}"`
+        );
+      }
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        // Directory doesn't exist, which is fine
+        return;
+      }
+      throw error;
     }
   }
 
