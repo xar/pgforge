@@ -11,10 +11,10 @@ export function displayInstanceTable(instances: PostgreSQLInstanceConfig[]): voi
   console.log(chalk.bold('PostgreSQL Instances:'));
   console.log(chalk.gray('─'.repeat(80)));
 
-  const headers = ['NAME', 'STATUS', 'VERSION', 'PORT', 'DATABASE'];
+  const headers = ['NAME', 'STATUS', 'VERSION', 'PORT', 'DATABASE', 'AUTO-START'];
   const headerRow = headers.map(h => chalk.bold(h)).join('  ');
   console.log(headerRow);
-  console.log(chalk.gray('─'.repeat(80)));
+  console.log(chalk.gray('─'.repeat(95)));
 
   for (const instance of instances) {
     const name = instance.metadata.name;
@@ -22,6 +22,7 @@ export function displayInstanceTable(instances: PostgreSQLInstanceConfig[]): voi
     const version = instance.spec.version;
     const port = instance.spec.network.port.toString();
     const database = instance.spec.database.name;
+    const autoStart = getAutoStartDisplay(instance);
 
     const row = [
       chalk.cyan(name.padEnd(15)),
@@ -29,6 +30,7 @@ export function displayInstanceTable(instances: PostgreSQLInstanceConfig[]): voi
       version.padEnd(8),
       port.padEnd(6),
       database.padEnd(20),
+      autoStart.padEnd(12),
     ].join('  ');
 
     console.log(row);
@@ -52,6 +54,20 @@ export function displayInstanceDetails(instance: PostgreSQLInstanceConfig): void
   }
   if (instance.status?.connections !== undefined) {
     console.log(`  Connections: ${instance.status.connections}`);
+  }
+
+  // Display service status if available
+  if (instance.status?.service) {
+    console.log();
+    console.log(chalk.bold('Service:'));
+    console.log(`  Auto-start: ${instance.status.service.enabled ? chalk.green('Enabled') : chalk.red('Disabled')}`);
+    console.log(`  Service Active: ${instance.status.service.active ? chalk.green('Yes') : chalk.red('No')}`);
+    console.log(`  Service Status: ${chalk.yellow(instance.status.service.status || 'unknown')}`);
+  } else if (instance.spec.service?.enabled) {
+    console.log();
+    console.log(chalk.bold('Service:'));
+    console.log(`  Auto-start: ${chalk.green('Enabled')}`);
+    console.log(`  Service Status: ${chalk.gray('Check with: pgforge service-status ' + instance.metadata.name)}`);
   }
 
   console.log();
@@ -118,6 +134,16 @@ export function getStatusDisplay(state: string): string {
       return chalk.red('●') + ' Error';
     default:
       return chalk.gray('●') + ' Unknown';
+  }
+}
+
+export function getAutoStartDisplay(instance: PostgreSQLInstanceConfig): string {
+  if (instance.status?.service?.enabled) {
+    return chalk.green('✓ Enabled');
+  } else if (instance.spec.service?.enabled) {
+    return chalk.yellow('✓ Configured');
+  } else {
+    return chalk.gray('✗ Disabled');
   }
 }
 

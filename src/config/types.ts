@@ -63,6 +63,12 @@ export interface PostgreSQLInstanceConfig {
       format?: 'custom' | 'plain' | 'directory' | 'tar';
       destination?: string;
     };
+    service?: {
+      enabled: boolean;
+      autoStart: boolean;
+      restartPolicy?: 'always' | 'on-failure' | 'no';
+      restartSec?: number;
+    };
   };
   status?: {
     state: 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
@@ -72,6 +78,11 @@ export interface PostgreSQLInstanceConfig {
     version?: string;
     dataSize?: string;
     connections?: number;
+    service?: {
+      enabled: boolean;
+      active: boolean;
+      status?: string;
+    };
   };
 }
 
