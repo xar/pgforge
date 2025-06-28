@@ -1,6 +1,6 @@
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
-import { access, mkdir, writeFile, readFile, rm, readdir } from 'fs/promises';
+import { access, mkdir, writeFile, readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { ConfigManager } from '../config/manager.js';
 import type { PostgreSQLInstanceConfig } from '../config/types.js';
@@ -53,6 +53,9 @@ export class InstanceManager {
 
     // Initialize PostgreSQL data directory
     await this.initializeDatabase(config);
+
+    // Create socket directory after initdb to avoid conflicts
+    await this.createSocketDirectory(config);
 
     // Generate configuration files
     await this.generateConfigFiles(config);
@@ -194,12 +197,9 @@ export class InstanceManager {
   }
 
   private async createInstanceDirectories(config: PostgreSQLInstanceConfig): Promise<void> {
-    const socketDirectory = join(config.spec.storage.dataDirectory, 'sockets');
-    
     const directories = [
       config.spec.storage.dataDirectory,
       config.spec.storage.logDirectory,
-      socketDirectory, // Add socket directory to avoid permission issues
     ];
 
     if (config.spec.storage.archiveDirectory) {
@@ -215,32 +215,21 @@ export class InstanceManager {
     }
   }
 
-  private async ensureEmptyDataDirectory(dataDirectory: string): Promise<void> {
+  private async createSocketDirectory(config: PostgreSQLInstanceConfig): Promise<void> {
+    const socketDirectory = join(config.spec.storage.dataDirectory, 'sockets');
+    
     try {
-      await access(dataDirectory);
-      
-      // Directory exists, check if it's empty
-      const contents = await readdir(dataDirectory);
-      if (contents.length > 0) {
-        // Directory is not empty, remove all contents
-        await rm(dataDirectory, { recursive: true, force: true });
-        await mkdir(dataDirectory, { recursive: true });
-      }
-    } catch (error: any) {
-      // Directory doesn't exist, create it
-      if (error.code === 'ENOENT') {
-        await mkdir(dataDirectory, { recursive: true });
-      } else {
-        throw error;
-      }
+      await access(socketDirectory);
+    } catch {
+      await mkdir(socketDirectory, { recursive: true });
     }
   }
 
   private async initializeDatabase(config: PostgreSQLInstanceConfig): Promise<void> {
     const initdbPath = await this.findPostgreSQLBinary('initdb', config.spec.version);
     
-    // Ensure the data directory is empty before running initdb
-    await this.ensureEmptyDataDirectory(config.spec.storage.dataDirectory);
+    // Check if data directory exists and is not empty
+    await this.ensureDataDirectoryIsEmpty(config.spec.storage.dataDirectory);
     
     const command = [
       initdbPath,
@@ -255,6 +244,30 @@ export class InstanceManager {
       await execAsync(command);
     } catch (error) {
       throw new Error(`Failed to initialize database: ${error}`);
+    }
+  }
+
+  private async ensureDataDirectoryIsEmpty(dataDirectory: string): Promise<void> {
+    try {
+      await access(dataDirectory);
+      
+      // Directory exists, check if it's empty
+      const { readdir } = await import('fs/promises');
+      const files = await readdir(dataDirectory);
+      
+      if (files.length > 0) {
+        throw new Error(
+          `Data directory '${dataDirectory}' exists but is not empty. ` +
+          `This may be from a previous failed installation. ` +
+          `Please remove the directory and try again: rm -rf "${dataDirectory}"`
+        );
+      }
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        // Directory doesn't exist, which is fine
+        return;
+      }
+      throw error;
     }
   }
 
