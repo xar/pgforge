@@ -124,7 +124,7 @@ export class InstanceManager {
       throw new Error(`Instance '${name}' is not running`);
     }
 
-    if (config.status.pid) {
+    if (config.status?.pid) {
       // Stop PostgreSQL process gracefully
       await this.stopPostgreSQLProcess(config.status.pid);
     }
@@ -164,9 +164,9 @@ export class InstanceManager {
     // Check if process is actually running
     if (config.status?.pid) {
       const isRunning = await this.isProcessRunning(config.status.pid);
-      if (!isRunning && config.status.state === 'running') {
+      if (!isRunning && config.status?.state === 'running') {
         // Process died, update status
-        config.status.state = 'stopped';
+        config.status!.state = 'stopped';
         await this.configManager.saveInstanceConfig(config);
       }
     }
@@ -324,9 +324,12 @@ export class InstanceManager {
     try {
       console.log(`Executing: ${command.replace(/PASSWORD '[^']*'/g, "PASSWORD '[REDACTED]'")}`);
       const result = await execAsync(command, options);
-      return result;
+      return {
+        stdout: result.stdout.toString(),
+        stderr: result.stderr.toString()
+      };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = error instanceof Error ? (error.message || 'Unknown error') : String(error);
       console.error(`Command failed: ${command.replace(/PASSWORD '[^']*'/g, "PASSWORD '[REDACTED]'")}`);
       console.error(`Error: ${errorMsg}`);
       throw error;
@@ -341,7 +344,11 @@ export class InstanceManager {
     const bytes = randomBytes(length);
     
     for (let i = 0; i < length; i++) {
-      password += characters[bytes[i] % characters.length];
+      const byte = bytes[i];
+      if (byte === undefined) {
+        throw new Error('Failed to generate secure random bytes');
+      }
+      password += characters[byte % characters.length];
     }
     
     return password;
