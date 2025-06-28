@@ -68,6 +68,8 @@ program
       console.log(`  Version: ${config.spec.version}`);
       console.log(`  Port: ${config.spec.network.port}`);
       console.log(`  Database: ${config.spec.database.name}`);
+      console.log(`  User: ${config.spec.database.owner}`);
+      console.log(`  Password: ${chalk.yellow(config.spec.database.password || 'N/A')}`);
       console.log(`  Data Directory: ${config.spec.storage.dataDirectory}`);
       
       console.log();
@@ -133,6 +135,9 @@ program
         console.log();
         console.log(chalk.gray('Connection information:'));
         console.log(chalk.gray(`  psql -h ${config.spec.network.bindAddress} -p ${config.spec.network.port} -U ${config.spec.database.owner} -d ${config.spec.database.name}`));
+        if (config.spec.database.password) {
+          console.log(chalk.gray(`  Password: ${config.spec.database.password}`));
+        }
       }
       
     } catch (error) {
@@ -274,7 +279,10 @@ program
 
       if (options.format === 'uri') {
         const host = config.spec.network.bindAddress === '0.0.0.0' ? 'localhost' : config.spec.network.bindAddress;
-        const uri = `postgresql://${config.spec.database.owner}@${host}:${config.spec.network.port}/${config.spec.database.name}`;
+        const userPassword = config.spec.database.password ? 
+          `${config.spec.database.owner}:${config.spec.database.password}` : 
+          config.spec.database.owner;
+        const uri = `postgresql://${userPassword}@${host}:${config.spec.network.port}/${config.spec.database.name}`;
         console.log(uri);
       } else if (options.format === 'env') {
         const host = config.spec.network.bindAddress === '0.0.0.0' ? 'localhost' : config.spec.network.bindAddress;
@@ -282,14 +290,21 @@ program
         console.log(`PGPORT=${config.spec.network.port}`);
         console.log(`PGDATABASE=${config.spec.database.name}`);
         console.log(`PGUSER=${config.spec.database.owner}`);
+        if (config.spec.database.password) {
+          console.log(`PGPASSWORD=${config.spec.database.password}`);
+        }
       } else if (options.format === 'json') {
         const host = config.spec.network.bindAddress === '0.0.0.0' ? 'localhost' : config.spec.network.bindAddress;
+        const userPassword = config.spec.database.password ? 
+          `${config.spec.database.owner}:${config.spec.database.password}` : 
+          config.spec.database.owner;
         const connectionInfo = {
           host,
           port: config.spec.network.port,
           database: config.spec.database.name,
           user: config.spec.database.owner,
-          uri: `postgresql://${config.spec.database.owner}@${host}:${config.spec.network.port}/${config.spec.database.name}`
+          password: config.spec.database.password,
+          uri: `postgresql://${userPassword}@${host}:${config.spec.network.port}/${config.spec.database.name}`
         };
         console.log(formatAsJson(connectionInfo));
       } else {

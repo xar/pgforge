@@ -1,5 +1,6 @@
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
+import { randomBytes } from 'crypto';
 import { access, mkdir, writeFile, readFile, readdir, rmdir, unlink, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { ConfigManager } from '../config/manager.js';
@@ -56,6 +57,9 @@ export class InstanceManager {
 
     // Create socket directory after initdb to avoid conflicts
     await this.createSocketDirectory(config);
+
+    // Create database and user with password
+    await this.createDatabaseAndUser(config);
 
     // Generate configuration files
     await this.generateConfigFiles(config);
@@ -194,6 +198,94 @@ export class InstanceManager {
     console.log(`Note: Data directories for '${name}' were not removed. Remove manually if needed:`);
     console.log(`  Data: ${config.spec.storage.dataDirectory}`);
     console.log(`  Logs: ${config.spec.storage.logDirectory}`);
+  }
+
+  private async createDatabaseAndUser(config: PostgreSQLInstanceConfig): Promise<void> {
+    // Generate a secure password for the database user
+    const password = this.generateSecurePassword();
+    config.spec.database.password = password;
+
+    // Start PostgreSQL temporarily to create database and user
+    const postgresPath = await this.findPostgreSQLBinary('postgres', config.spec.version);
+    const psqlPath = await this.findPostgreSQLBinary('psql', config.spec.version);
+    
+    // Start PostgreSQL in background
+    const tempProcess = spawn(postgresPath, [
+      '-D', config.spec.storage.dataDirectory,
+      '-p', config.spec.network.port.toString(),
+      '-c', 'listen_addresses=127.0.0.1',
+    ], {
+      detached: false,
+      stdio: 'ignore',
+    });
+
+    try {
+      // Wait for PostgreSQL to start
+      await this.waitForPostgreSQLReady(config.spec.network.port, config.spec.version);
+
+      // Create the database
+      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE DATABASE \\"${config.spec.database.name}\\""`);
+
+      // Create the user with password
+      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE USER \\"${config.spec.database.owner}\\" WITH PASSWORD '${password}'"`);
+
+      // Grant privileges to the user on the database
+      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \\"${config.spec.database.name}\\" TO \\"${config.spec.database.owner}\\""`);
+
+      // Grant the user permission to create schemas in the database
+      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d "${config.spec.database.name}" -c "GRANT CREATE ON SCHEMA public TO \\"${config.spec.database.owner}\\""`);
+
+    } catch (error) {
+      throw new Error(`Failed to create database and user: ${error}`);
+    } finally {
+      // Stop the temporary PostgreSQL process
+      if (tempProcess && tempProcess.pid) {
+        try {
+          process.kill(tempProcess.pid, 'SIGTERM');
+          // Wait for process to exit
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch {
+          // If SIGTERM doesn't work, try SIGKILL
+          try {
+            process.kill(tempProcess.pid, 'SIGKILL');
+          } catch {
+            // Process already dead, ignore
+          }
+        }
+      }
+    }
+  }
+
+  private generateSecurePassword(length: number = 16): string {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let password = '';
+    
+    // Use crypto.randomBytes for cryptographically secure random generation
+    const bytes = randomBytes(length);
+    
+    for (let i = 0; i < length; i++) {
+      password += characters[bytes[i] % characters.length];
+    }
+    
+    return password;
+  }
+
+  private async waitForPostgreSQLReady(port: number, version: string, maxAttempts: number = 30): Promise<void> {
+    const psqlPath = await this.findPostgreSQLBinary('psql', version);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await execAsync(`${psqlPath} -h 127.0.0.1 -p ${port} -U postgres -d postgres -c "SELECT 1"`, { 
+          timeout: 2000 
+        });
+        return; // Connection successful
+      } catch {
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    throw new Error(`PostgreSQL did not become ready after ${maxAttempts} attempts`);
   }
 
   private async createInstanceDirectories(config: PostgreSQLInstanceConfig): Promise<void> {

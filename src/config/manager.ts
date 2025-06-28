@@ -190,7 +190,7 @@ export class ConfigManager {
         version,
         network: {
           port: defaultPort,
-          bindAddress: '127.0.0.1',
+          bindAddress: '0.0.0.0',
           maxConnections: 100,
         },
         storage: {
@@ -210,7 +210,7 @@ export class ConfigManager {
           },
           authentication: {
             method: 'md5',
-            allowedHosts: ['127.0.0.1/32', '::1/128'],
+            allowedHosts: ['127.0.0.1/32', '::1/128', '0.0.0.0/0'],
           },
           audit: {
             enabled: false,
