@@ -127,7 +127,7 @@ program
     const spinner = ora(`Starting instance '${name}'...`).start();
     
     try {
-      await instanceManager.startInstance(name);
+      await instanceManager.startInstanceWithService(name);
       spinner.succeed(`Instance '${name}' started successfully`);
       
       const config = await instanceManager.getInstanceStatus(name);
@@ -154,7 +154,7 @@ program
     const spinner = ora(`Stopping instance '${name}'...`).start();
     
     try {
-      await instanceManager.stopInstance(name);
+      await instanceManager.stopInstanceWithService(name);
       spinner.succeed(`Instance '${name}' stopped successfully`);
       
     } catch (error) {

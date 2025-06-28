@@ -150,12 +150,12 @@ export class InstanceManager {
     }
 
     if (config.status?.state === 'running') {
-      await this.stopInstance(name);
+      await this.stopInstanceWithService(name);
       // Wait a moment for cleanup
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    await this.startInstance(name);
+    await this.startInstanceWithService(name);
   }
 
   async getInstanceStatus(name: string): Promise<PostgreSQLInstanceConfig | null> {
