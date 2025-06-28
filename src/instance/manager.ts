@@ -344,7 +344,11 @@ export class InstanceManager {
     const bytes = randomBytes(length);
     
     for (let i = 0; i < length; i++) {
-      password += characters[bytes[i] % characters.length];
+      const byte = bytes[i];
+      if (byte === undefined) {
+        throw new Error('Failed to generate secure random bytes');
+      }
+      password += characters[byte % characters.length];
     }
     
     return password;
