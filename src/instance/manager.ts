@@ -231,11 +231,13 @@ export class InstanceManager {
     console.log(`PostgreSQL binary: ${postgresPath}`);
     console.log(`Data directory: ${config.spec.storage.dataDirectory}`);
     
-    // Start PostgreSQL in background
+    // Start PostgreSQL in background with user-local socket directory
+    const socketDirectory = join(config.spec.storage.dataDirectory, 'sockets');
     const tempProcess = spawn(postgresPath, [
       '-D', config.spec.storage.dataDirectory,
       '-p', config.spec.network.port.toString(),
       '-c', 'listen_addresses=127.0.0.1',
+      '-c', `unix_socket_directories=${socketDirectory}`,
     ], {
       detached: false,
       stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr for debugging
