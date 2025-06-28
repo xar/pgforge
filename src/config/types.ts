@@ -22,6 +22,7 @@ export interface PostgreSQLInstanceConfig {
     database: {
       name: string;
       owner: string;
+      password?: string;
       encoding: string;
       locale: string;
       timezone: string;
