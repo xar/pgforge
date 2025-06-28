@@ -449,6 +449,7 @@ export class InstanceManager {
     const command = [
       initdbPath,
       '-D', config.spec.storage.dataDirectory,
+      '--username=postgres',
       '--auth-local=trust',
       '--auth-host=md5',
       `--encoding=${config.spec.database.encoding}`,
