@@ -260,25 +260,25 @@ export class InstanceManager {
       console.log(`Temporary PostgreSQL process started with PID: ${tempProcess.pid}`);
       
       // Wait for PostgreSQL to start
-      await this.waitForPostgreSQLReady(config.spec.network.port, config.spec.version);
+      await this.waitForPostgreSQLReady(config.spec.network.port, config.spec.version, socketDirectory);
 
       console.log('PostgreSQL is ready, creating database and user...');
 
       // Create the database
       console.log(`Creating database: ${config.spec.database.name}`);
-      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE DATABASE \\"${config.spec.database.name}\\""`);
+      await this.execAsyncWithLogging(`${psqlPath} -h "${socketDirectory}" -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE DATABASE \\"${config.spec.database.name}\\""`);
 
       // Create the user with password
       console.log(`Creating user: ${config.spec.database.owner}`);
-      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE USER \\"${config.spec.database.owner}\\" WITH PASSWORD '${password}'"`);
+      await this.execAsyncWithLogging(`${psqlPath} -h "${socketDirectory}" -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE USER \\"${config.spec.database.owner}\\" WITH PASSWORD '${password}'"`);
 
       // Grant privileges to the user on the database
       console.log(`Granting database privileges...`);
-      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \\"${config.spec.database.name}\\" TO \\"${config.spec.database.owner}\\""`);
+      await this.execAsyncWithLogging(`${psqlPath} -h "${socketDirectory}" -p ${config.spec.network.port} -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \\"${config.spec.database.name}\\" TO \\"${config.spec.database.owner}\\""`);
 
       // Grant the user permission to create schemas in the database
       console.log(`Granting schema creation privileges...`);
-      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d "${config.spec.database.name}" -c "GRANT CREATE ON SCHEMA public TO \\"${config.spec.database.owner}\\""`);
+      await this.execAsyncWithLogging(`${psqlPath} -h "${socketDirectory}" -p ${config.spec.network.port} -U postgres -d "${config.spec.database.name}" -c "GRANT CREATE ON SCHEMA public TO \\"${config.spec.database.owner}\\""`);
 
       console.log('Database and user created successfully');
 
@@ -356,7 +356,7 @@ export class InstanceManager {
     return password;
   }
 
-  private async waitForPostgreSQLReady(port: number, version: string, maxAttempts: number = 30): Promise<void> {
+  private async waitForPostgreSQLReady(port: number, version: string, socketDirectory: string, maxAttempts: number = 30): Promise<void> {
     const psqlPath = await this.findPostgreSQLBinary('psql', version);
     let lastError: any = null;
     
@@ -364,7 +364,8 @@ export class InstanceManager {
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const command = `${psqlPath} -h 127.0.0.1 -p ${port} -U postgres -d postgres -c "SELECT 1"`;
+        // Use Unix socket connection to avoid password authentication during temporary startup
+        const command = `${psqlPath} -h "${socketDirectory}" -p ${port} -U postgres -d postgres -c "SELECT 1"`;
         console.log(`Attempt ${attempt}/${maxAttempts}: Testing PostgreSQL connection...`);
         
         await execAsync(command, { 
