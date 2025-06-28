@@ -25,17 +25,27 @@ export class InstanceManager {
     } = {}
   ): Promise<PostgreSQLInstanceConfig> {
     
+    console.log(`Creating PostgreSQL instance '${name}'...`);
+    
     let config: PostgreSQLInstanceConfig;
 
     if (options.file) {
       // Load from file
+      console.log(`Loading configuration from file: ${options.file}`);
       const content = await readFile(options.file, 'utf-8');
       config = JSON.parse(content); // Assume YAML is parsed already
       config.metadata.name = name || config.metadata.name;
     } else {
       // Create new config
+      console.log('Creating new instance configuration...');
       config = this.configManager.createInstanceConfig(name, options);
     }
+
+    console.log(`Instance configuration:`);
+    console.log(`  Name: ${config.metadata.name}`);
+    console.log(`  Version: ${config.spec.version}`);
+    console.log(`  Port: ${config.spec.network.port}`);
+    console.log(`  Data directory: ${config.spec.storage.dataDirectory}`);
 
     // Check if instance already exists
     const existing = await this.configManager.getInstanceConfig(name);
@@ -44,29 +54,35 @@ export class InstanceManager {
     }
 
     // Check if port is available  
+    console.log(`Checking if port ${config.spec.network.port} is available...`);
     const isPortFree = await this.isPortAvailable(config.spec.network.port);
     if (!isPortFree) {
       throw new Error(`Port ${config.spec.network.port} is already in use`);
     }
 
     // Create directories
+    console.log('Creating instance directories...');
     await this.createInstanceDirectories(config);
 
     // Initialize PostgreSQL data directory
     await this.initializeDatabase(config);
 
     // Create socket directory after initdb to avoid conflicts
+    console.log('Creating socket directory...');
     await this.createSocketDirectory(config);
 
     // Create database and user with password
     await this.createDatabaseAndUser(config);
 
     // Generate configuration files
+    console.log('Generating PostgreSQL configuration files...');
     await this.generateConfigFiles(config);
 
     // Save instance configuration
+    console.log('Saving instance configuration...');
     await this.configManager.saveInstanceConfig(config);
 
+    console.log(`PostgreSQL instance '${name}' created successfully!`);
     return config;
   }
 
@@ -201,6 +217,8 @@ export class InstanceManager {
   }
 
   private async createDatabaseAndUser(config: PostgreSQLInstanceConfig): Promise<void> {
+    console.log('Creating database and user with password...');
+    
     // Generate a secure password for the database user
     const password = this.generateSecurePassword();
     config.spec.database.password = password;
@@ -209,6 +227,10 @@ export class InstanceManager {
     const postgresPath = await this.findPostgreSQLBinary('postgres', config.spec.version);
     const psqlPath = await this.findPostgreSQLBinary('psql', config.spec.version);
     
+    console.log(`Starting temporary PostgreSQL instance on port ${config.spec.network.port}...`);
+    console.log(`PostgreSQL binary: ${postgresPath}`);
+    console.log(`Data directory: ${config.spec.storage.dataDirectory}`);
+    
     // Start PostgreSQL in background
     const tempProcess = spawn(postgresPath, [
       '-D', config.spec.storage.dataDirectory,
@@ -216,43 +238,98 @@ export class InstanceManager {
       '-c', 'listen_addresses=127.0.0.1',
     ], {
       detached: false,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout and stderr for debugging
     });
 
+    // Capture stderr output for debugging
+    let stderrOutput = '';
+    if (tempProcess.stderr) {
+      tempProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        stderrOutput += output;
+        // Log PostgreSQL startup messages for debugging
+        if (output.includes('FATAL') || output.includes('ERROR')) {
+          console.log(`PostgreSQL stderr: ${output.trim()}`);
+        }
+      });
+    }
+
     try {
+      console.log(`Temporary PostgreSQL process started with PID: ${tempProcess.pid}`);
+      
       // Wait for PostgreSQL to start
       await this.waitForPostgreSQLReady(config.spec.network.port, config.spec.version);
 
+      console.log('PostgreSQL is ready, creating database and user...');
+
       // Create the database
-      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE DATABASE \\"${config.spec.database.name}\\""`);
+      console.log(`Creating database: ${config.spec.database.name}`);
+      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE DATABASE \\"${config.spec.database.name}\\""`);
 
       // Create the user with password
-      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE USER \\"${config.spec.database.owner}\\" WITH PASSWORD '${password}'"`);
+      console.log(`Creating user: ${config.spec.database.owner}`);
+      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "CREATE USER \\"${config.spec.database.owner}\\" WITH PASSWORD '${password}'"`);
 
       // Grant privileges to the user on the database
-      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \\"${config.spec.database.name}\\" TO \\"${config.spec.database.owner}\\""`);
+      console.log(`Granting database privileges...`);
+      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \\"${config.spec.database.name}\\" TO \\"${config.spec.database.owner}\\""`);
 
       // Grant the user permission to create schemas in the database
-      await execAsync(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d "${config.spec.database.name}" -c "GRANT CREATE ON SCHEMA public TO \\"${config.spec.database.owner}\\""`);
+      console.log(`Granting schema creation privileges...`);
+      await this.execAsyncWithLogging(`${psqlPath} -h 127.0.0.1 -p ${config.spec.network.port} -U postgres -d "${config.spec.database.name}" -c "GRANT CREATE ON SCHEMA public TO \\"${config.spec.database.owner}\\""`);
+
+      console.log('Database and user created successfully');
 
     } catch (error) {
-      throw new Error(`Failed to create database and user: ${error}`);
+      let errorMessage = `Failed to create database and user: ${error}`;
+      
+      // Include PostgreSQL stderr output in error if available
+      if (stderrOutput.trim()) {
+        errorMessage += `\n\nPostgreSQL stderr output:\n${stderrOutput.trim()}`;
+      }
+      
+      throw new Error(errorMessage);
     } finally {
       // Stop the temporary PostgreSQL process
+      console.log('Stopping temporary PostgreSQL instance...');
       if (tempProcess && tempProcess.pid) {
         try {
+          console.log(`Sending SIGTERM to PostgreSQL process ${tempProcess.pid}`);
           process.kill(tempProcess.pid, 'SIGTERM');
           // Wait for process to exit
           await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch {
+          
+          // Check if process still exists
+          if (await this.isProcessRunning(tempProcess.pid)) {
+            console.log(`Process ${tempProcess.pid} still running, sending SIGKILL`);
+            process.kill(tempProcess.pid, 'SIGKILL');
+          } else {
+            console.log(`Temporary PostgreSQL process ${tempProcess.pid} stopped gracefully`);
+          }
+        } catch (killError) {
           // If SIGTERM doesn't work, try SIGKILL
           try {
+            console.log(`Failed to stop with SIGTERM (${killError}), trying SIGKILL...`);
             process.kill(tempProcess.pid, 'SIGKILL');
-          } catch {
+          } catch (killKillError) {
             // Process already dead, ignore
+            console.log(`Process ${tempProcess.pid} already terminated`);
           }
         }
       }
+    }
+  }
+
+  private async execAsyncWithLogging(command: string, options?: any): Promise<{ stdout: string; stderr: string }> {
+    try {
+      console.log(`Executing: ${command.replace(/PASSWORD '[^']*'/g, "PASSWORD '[REDACTED]'")}`);
+      const result = await execAsync(command, options);
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`Command failed: ${command.replace(/PASSWORD '[^']*'/g, "PASSWORD '[REDACTED]'")}`);
+      console.error(`Error: ${errorMsg}`);
+      throw error;
     }
   }
 
@@ -272,20 +349,48 @@ export class InstanceManager {
 
   private async waitForPostgreSQLReady(port: number, version: string, maxAttempts: number = 30): Promise<void> {
     const psqlPath = await this.findPostgreSQLBinary('psql', version);
+    let lastError: any = null;
+    
+    console.log(`Waiting for PostgreSQL to become ready on port ${port}...`);
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await execAsync(`${psqlPath} -h 127.0.0.1 -p ${port} -U postgres -d postgres -c "SELECT 1"`, { 
+        const command = `${psqlPath} -h 127.0.0.1 -p ${port} -U postgres -d postgres -c "SELECT 1"`;
+        console.log(`Attempt ${attempt}/${maxAttempts}: Testing PostgreSQL connection...`);
+        
+        await execAsync(command, { 
           timeout: 2000 
         });
+        
+        console.log(`PostgreSQL is ready after ${attempt} attempt(s)`);
         return; // Connection successful
-      } catch {
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        lastError = error;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        
+        if (attempt === 1 || attempt % 5 === 0 || attempt === maxAttempts) {
+          // Log error on first attempt, every 5th attempt, and last attempt
+          console.log(`Attempt ${attempt}/${maxAttempts} failed: ${errorMsg}`);
+        }
+        
+        // Wait before retrying (except on last attempt)
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
     }
     
-    throw new Error(`PostgreSQL did not become ready after ${maxAttempts} attempts`);
+    // Enhanced error message with troubleshooting information
+    const errorDetails = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(
+      `PostgreSQL did not become ready after ${maxAttempts} attempts (${maxAttempts} seconds). ` +
+      `Last error: ${errorDetails}\n\n` +
+      `Troubleshooting:\n` +
+      `1. Check if PostgreSQL process is running: ps aux | grep postgres\n` +
+      `2. Check PostgreSQL logs for startup errors\n` +
+      `3. Verify port ${port} is not blocked by firewall\n` +
+      `4. Check for permission issues with data directory`
+    );
   }
 
   private async createInstanceDirectories(config: PostgreSQLInstanceConfig): Promise<void> {
@@ -318,7 +423,10 @@ export class InstanceManager {
   }
 
   private async initializeDatabase(config: PostgreSQLInstanceConfig): Promise<void> {
+    console.log('Initializing PostgreSQL database...');
+    
     const initdbPath = await this.findPostgreSQLBinary('initdb', config.spec.version);
+    console.log(`Using initdb binary: ${initdbPath}`);
     
     // Check if data directory exists and is not empty
     await this.ensureDataDirectoryIsEmpty(config.spec.storage.dataDirectory);
@@ -333,7 +441,9 @@ export class InstanceManager {
     ].join(' ');
 
     try {
-      await execAsync(command);
+      console.log(`Initializing database cluster in: ${config.spec.storage.dataDirectory}`);
+      await this.execAsyncWithLogging(command);
+      console.log('Database initialization completed successfully');
     } catch (error) {
       throw new Error(`Failed to initialize database: ${error}`);
     }
@@ -541,11 +651,16 @@ export class InstanceManager {
   }
 
   private async startPostgreSQLProcess(config: PostgreSQLInstanceConfig): Promise<number> {
+    console.log('Starting PostgreSQL process...');
+    
     const postgresPath = await this.findPostgreSQLBinary('postgres', config.spec.version);
+    console.log(`Using PostgreSQL binary: ${postgresPath}`);
     
     const args = [
       '-D', config.spec.storage.dataDirectory,
     ];
+
+    console.log(`Starting PostgreSQL with args: ${args.join(' ')}`);
 
     const child = spawn(postgresPath, args, {
       detached: true,
@@ -554,14 +669,22 @@ export class InstanceManager {
 
     child.unref();
 
+    console.log(`PostgreSQL process spawned with PID: ${child.pid}`);
+
     // Wait a moment for the process to start
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Verify it's running
-    if (!child.pid || !(await this.isProcessRunning(child.pid))) {
-      throw new Error('Failed to start PostgreSQL process');
+    if (!child.pid) {
+      throw new Error('Failed to start PostgreSQL process: No PID assigned');
+    }
+    
+    const isRunning = await this.isProcessRunning(child.pid);
+    if (!isRunning) {
+      throw new Error(`Failed to start PostgreSQL process: Process ${child.pid} exited immediately. Check PostgreSQL logs for errors.`);
     }
 
+    console.log(`PostgreSQL process ${child.pid} started successfully`);
     return child.pid;
   }
 
