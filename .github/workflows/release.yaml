@@ -15,12 +15,6 @@ jobs:
           - os: ubuntu-latest
             target: linux-x64
             output: pgforge-linux-x64
-          - os: macos-latest
-            target: darwin-x64
-            output: pgforge-darwin-x64
-          - os: macos-latest-xlarge
-            target: darwin-arm64
-            output: pgforge-darwin-arm64
 
     steps:
       - name: Checkout code
