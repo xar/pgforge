@@ -471,6 +471,85 @@ program
     }
   });
 
+// Enable service command
+program
+  .command('enable-service <name>')
+  .description('enable auto-start service for a PostgreSQL instance')
+  .option('--user', 'use user systemd service instead of system service')
+  .action(async (name, options) => {
+    const spinner = ora(`Enabling service for instance '${name}'...`).start();
+    
+    try {
+      await instanceManager.enableService(name, options.user);
+      spinner.succeed(`Service enabled for instance '${name}'`);
+      
+      console.log();
+      console.log(chalk.gray('The instance will now automatically start after system restart.'));
+      console.log(chalk.gray('Service management commands:'));
+      console.log(chalk.gray(`  Check status: ${chalk.white('pgforge service-status ' + name)}`));
+      console.log(chalk.gray(`  Disable: ${chalk.white('pgforge disable-service ' + name)}`));
+      
+    } catch (error) {
+      spinner.fail(`Failed to enable service: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  });
+
+// Disable service command  
+program
+  .command('disable-service <name>')
+  .description('disable auto-start service for a PostgreSQL instance')
+  .option('--user', 'use user systemd service instead of system service')
+  .action(async (name, options) => {
+    const spinner = ora(`Disabling service for instance '${name}'...`).start();
+    
+    try {
+      await instanceManager.disableService(name, options.user);
+      spinner.succeed(`Service disabled for instance '${name}'`);
+      
+      console.log();
+      console.log(chalk.gray('The instance will no longer automatically start after system restart.'));
+      console.log(chalk.gray(`Use ${chalk.white('pgforge enable-service ' + name)} to re-enable auto-start.`));
+      
+    } catch (error) {
+      spinner.fail(`Failed to disable service: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  });
+
+// Service status command
+program
+  .command('service-status <name>')
+  .description('show systemd service status for a PostgreSQL instance')
+  .option('--user', 'check user systemd service instead of system service')
+  .action(async (name, options) => {
+    const spinner = ora(`Checking service status for '${name}'...`).start();
+    
+    try {
+      const status = await instanceManager.getServiceStatus(name, options.user);
+      spinner.stop();
+      
+      console.log(chalk.bold(`Service Status for '${name}':`));
+      console.log(`  Service Name: ${chalk.cyan('pgforge-' + name)}`);
+      console.log(`  Enabled: ${status.enabled ? chalk.green('Yes') : chalk.red('No')}`);
+      console.log(`  Active: ${status.active ? chalk.green('Yes') : chalk.red('No')}`);
+      console.log(`  Status: ${chalk.yellow(status.status)}`);
+      console.log(`  Service Type: ${options.user ? chalk.blue('User') : chalk.blue('System')}`);
+      
+      if (status.enabled) {
+        console.log();
+        console.log(chalk.gray('This instance will automatically start after system restart.'));
+      } else {
+        console.log();
+        console.log(chalk.gray(`Use ${chalk.white('pgforge enable-service ' + name)} to enable auto-start.`));
+      }
+      
+    } catch (error) {
+      spinner.fail(`Failed to get service status: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  });
+
 // Error handling
 program.configureOutput({
   writeErr: (str) => process.stderr.write(chalk.red(str))

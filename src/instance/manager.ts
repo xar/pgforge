@@ -4,15 +4,18 @@ import { randomBytes } from 'crypto';
 import { access, mkdir, writeFile, readFile, readdir, rmdir, unlink, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { ConfigManager } from '../config/manager.js';
+import { ServiceManager } from '../service/manager.js';
 import type { PostgreSQLInstanceConfig } from '../config/types.js';
 
 const execAsync = promisify(exec);
 
 export class InstanceManager {
   private configManager: ConfigManager;
+  private serviceManager: ServiceManager;
 
   constructor() {
     this.configManager = new ConfigManager();
+    this.serviceManager = new ServiceManager();
   }
 
   async createInstance(
@@ -168,6 +171,38 @@ export class InstanceManager {
         // Process died, update status
         config.status!.state = 'stopped';
         await this.configManager.saveInstanceConfig(config);
+      }
+    }
+
+    // Check service status if service is enabled
+    if (config.spec.service?.enabled && await this.serviceManager.isSystemdAvailable()) {
+      try {
+        const serviceStatus = await this.serviceManager.getServiceStatus(name, false);
+        
+        // Update config with service status
+        if (!config.status) {
+          config.status = {
+            state: 'stopped',
+            version: config.spec.version,
+            connections: 0,
+          };
+        }
+        config.status.service = serviceStatus;
+        
+        // If service is active but config shows stopped, update it
+        if (serviceStatus.active && config.status.state === 'stopped') {
+          config.status.state = 'running';
+          config.status.startTime = new Date().toISOString();
+        } else if (!serviceStatus.active && config.status.state === 'running') {
+          config.status.state = 'stopped';
+          config.status.lastRestart = config.status.startTime;
+          config.status.startTime = undefined;
+        }
+        
+        await this.configManager.saveInstanceConfig(config);
+      } catch (error) {
+        // Service status check failed, don't fail the whole operation
+        console.warn(`Warning: Could not check service status for '${name}': ${error}`);
       }
     }
 
@@ -803,5 +838,130 @@ export class InstanceManager {
     console.log(`Creating backup for instance '${config.metadata.name}'...`);
     // TODO: Implement backup functionality
     console.log('Backup functionality not yet implemented');
+  }
+
+  /**
+   * Enable service auto-start for an instance
+   */
+  async enableService(name: string, useUserService = false): Promise<void> {
+    const config = await this.configManager.getInstanceConfig(name);
+    if (!config) {
+      throw new Error(`Instance '${name}' not found`);
+    }
+
+    // Check if systemd is available
+    if (!await this.serviceManager.isSystemdAvailable()) {
+      throw new Error('systemd is not available on this system. Service management requires systemd.');
+    }
+
+    // Update configuration to enable service
+    config.spec.service = {
+      enabled: true,
+      autoStart: true,
+      restartPolicy: 'on-failure',
+      restartSec: 5,
+      ...config.spec.service
+    };
+
+    // Enable the service
+    await this.serviceManager.enableService(config, useUserService);
+
+    // Update instance configuration
+    await this.configManager.saveInstanceConfig(config);
+
+    console.log(`Service auto-start enabled for instance '${name}'`);
+  }
+
+  /**
+   * Disable service auto-start for an instance
+   */
+  async disableService(name: string, useUserService = false): Promise<void> {
+    const config = await this.configManager.getInstanceConfig(name);
+    if (!config) {
+      throw new Error(`Instance '${name}' not found`);
+    }
+
+    // Disable the service
+    await this.serviceManager.disableService(name, useUserService);
+
+    // Update configuration to disable service
+    if (config.spec.service) {
+      config.spec.service.enabled = false;
+      config.spec.service.autoStart = false;
+    }
+
+    // Update instance configuration
+    await this.configManager.saveInstanceConfig(config);
+
+    console.log(`Service auto-start disabled for instance '${name}'`);
+  }
+
+  /**
+   * Get service status for an instance
+   */
+  async getServiceStatus(name: string, useUserService = false): Promise<{
+    enabled: boolean;
+    active: boolean;
+    status: string;
+  }> {
+    return await this.serviceManager.getServiceStatus(name, useUserService);
+  }
+
+  /**
+   * Start instance using service (if enabled) or direct process
+   */
+  async startInstanceWithService(name: string, useUserService = false): Promise<void> {
+    const config = await this.configManager.getInstanceConfig(name);
+    if (!config) {
+      throw new Error(`Instance '${name}' not found`);
+    }
+
+    if (config.spec.service?.enabled && await this.serviceManager.isSystemdAvailable()) {
+      // Start using systemd service
+      await this.serviceManager.startService(name, useUserService);
+      
+      // Wait for service to start and update status
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const serviceStatus = await this.serviceManager.getServiceStatus(name, useUserService);
+      
+      config.status = {
+        state: serviceStatus.active ? 'running' : 'stopped',
+        startTime: serviceStatus.active ? new Date().toISOString() : undefined,
+        version: config.spec.version,
+        connections: 0,
+        service: serviceStatus,
+      };
+    } else {
+      // Start using direct process (existing method)
+      await this.startInstance(name);
+    }
+  }
+
+  /**
+   * Stop instance using service (if enabled) or direct process
+   */
+  async stopInstanceWithService(name: string, useUserService = false): Promise<void> {
+    const config = await this.configManager.getInstanceConfig(name);
+    if (!config) {
+      throw new Error(`Instance '${name}' not found`);
+    }
+
+    if (config.spec.service?.enabled && await this.serviceManager.isSystemdAvailable()) {
+      // Stop using systemd service
+      await this.serviceManager.stopService(name, useUserService);
+      
+      // Update status
+      const serviceStatus = await this.serviceManager.getServiceStatus(name, useUserService);
+      config.status = {
+        state: 'stopped',
+        lastRestart: config.status?.startTime,
+        version: config.spec.version,
+        connections: 0,
+        service: serviceStatus,
+      };
+    } else {
+      // Stop using direct process (existing method)
+      await this.stopInstance(name);
+    }
   }
 }
