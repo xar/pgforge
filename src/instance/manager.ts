@@ -236,7 +236,7 @@ export class InstanceManager {
     const tempProcess = spawn(postgresPath, [
       '-D', config.spec.storage.dataDirectory,
       '-p', config.spec.network.port.toString(),
-      '-c', 'listen_addresses=127.0.0.1',
+      '-c', `listen_addresses=${config.spec.network.bindAddress}`,
       '-c', `unix_socket_directories=${socketDirectory}`,
     ], {
       detached: false,
