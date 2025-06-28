@@ -205,6 +205,9 @@ export class ServiceManager {
     const restartSec = config.spec.service?.restartSec || 5;
     const user = useUserService ? process.env.USER || 'postgres' : 'postgres';
 
+    // Generate socket directory path from data directory
+    const socketDir = join(config.spec.storage.dataDirectory, 'sockets');
+    
     return `[Unit]
 Description=PostgreSQL database server for ${config.metadata.name}
 Documentation=man:postgres(1)
@@ -212,13 +215,15 @@ After=network.target
 Wants=network.target
 
 [Service]
-Type=forking
+Type=notify
 User=${user}
-ExecStart=${postgresPath} -D ${config.spec.storage.dataDirectory}
+ExecStart=${postgresPath} -D ${config.spec.storage.dataDirectory} -k ${socketDir} -p ${config.spec.network.port}
 ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
 KillMode=mixed
 KillSignal=SIGINT
-TimeoutSec=0
+TimeoutSec=120
+TimeoutStopSec=120
 
 # Restart policy
 Restart=${restartPolicy}
