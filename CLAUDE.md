@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PgForge is a modern, cross-platform CLI tool built with Bun that simplifies the creation, management, and orchestration of multiple PostgreSQL instances. The project is in early development, currently containing only a basic "Hello via Bun!" example in the main entry point.
+PgForge is a modern, cross-platform CLI tool built with Bun that simplifies the creation, management, and orchestration of multiple PostgreSQL instances. The project is a fully-featured application with a complete command structure, modular architecture, and comprehensive testing.
 
 ## Development Commands
 
@@ -14,70 +14,118 @@ PgForge is a modern, cross-platform CLI tool built with Bun that simplifies the 
 bun install
 
 # Run the main application
+bun run start
+# or
 bun run index.ts
 
 # Run with hot reload during development
+bun run dev
+# or
 bun run --watch index.ts
 ```
 
 ### Testing
 ```bash
-# Run tests (when test files are created)
+# Run all tests
 bun test
 
 # Run tests with watch mode
 bun test --watch
+
+# Run tests with coverage
+bun test --coverage
+
+# Run type checking
+bun run typecheck
 ```
 
 ### Building
 ```bash
-# Build for production (when build configuration is set up)
-bun build index.ts --outdir ./dist
+# Build for production
+bun run build
 
-# Build as standalone executable (when configured)
-bun build index.ts --compile --outfile pgforge
+# Build standalone binary
+bun run build:binary
 ```
 
 ## Architecture
 
 ### Current Structure
-- `index.ts` - Main entry point (currently a simple "Hello via Bun!" example)
-- `ai/specification.md` - Comprehensive specification document outlining the full vision for PgForge
-- `package.json` - Minimal configuration with Bun TypeScript setup
-- `tsconfig.json` - TypeScript configuration optimized for Bun runtime
+- `index.ts` - Main CLI entry point with full command structure using Commander.js
+- `src/` - Core application modules
+  - `config/` - Configuration management and types
+  - `instance/` - PostgreSQL instance management
+  - `utils/` - Utility functions (validation, system checks, display)
+- `ai/specification.md` - Comprehensive specification document
+- `TESTING.md` - Testing guide and procedures
 
 ### Technology Stack
 - **Runtime**: Bun (fast JavaScript runtime, package manager, and bundler)
-- **Language**: TypeScript with modern ES features
+- **Language**: TypeScript with modern ES features and strict type checking
+- **CLI Framework**: Commander.js for command parsing and structure
+- **UI Libraries**: Chalk (colors), Ora (spinners), YAML parsing
 - **Target**: Cross-platform CLI tool (Linux, macOS)
 - **Output**: Standalone binary executable
 
 ### Key Design Principles
-Based on the specification document, PgForge follows these principles:
 - **Instance-First**: Manage PostgreSQL instances, not just versions
 - **Configuration as Code**: YAML-based declarative configuration
-- **Security by Default**: Automated SSL, secure defaults, audit logging
-- **Developer Experience**: Interactive setup, rich CLI interface
-- **Production Ready**: Backup automation, monitoring, log management
+- **Security by Default**: SSL, secure defaults, proper validation
+- **Developer Experience**: Rich CLI with colors, spinners, helpful error messages
+- **Modular Architecture**: Clean separation of concerns across modules
 
-## Development Notes
+## Code Architecture
 
-### Project Status
-This is a very early-stage project. The current codebase contains only a basic example, but the `ai/specification.md` file contains a comprehensive vision for a full-featured PostgreSQL instance management tool.
+### Command Structure
+The CLI is built with Commander.js providing these main commands:
+- `create` - Create new PostgreSQL instances with templates
+- `list/ls` - List instances with filtering and formatting options
+- `start/stop/restart` - Instance lifecycle management
+- `show/describe` - Display detailed instance information
+- `remove/rm` - Remove instances with backup options
+- `status` - Show system and instance status
+- `connection-string` - Get connection information in various formats
+- `init` - Initialize PgForge configuration
+- `check` - System requirements validation
 
-### TypeScript Configuration
-The project uses modern TypeScript settings optimized for Bun:
-- ES modules with bundler resolution
-- Strict type checking enabled
-- No emit (Bun handles compilation)
-- Modern lib targeting (ESNext)
+### Core Modules
 
-### Future Implementation Areas
-According to the specification, the main areas to be implemented include:
-- CLI command structure with subcommands (create, start, stop, list, etc.)
-- YAML configuration schema for PostgreSQL instances
-- Instance lifecycle management
-- Backup and recovery systems
-- Monitoring and health checks
-- Security features (SSL, authentication, audit logging)
-- Template system for different deployment scenarios
+#### Configuration Management (`src/config/`)
+- `types.ts` - TypeScript interfaces for configuration schema
+- `manager.ts` - Configuration file management and validation
+- Handles global config and per-instance YAML configurations
+
+#### Instance Management (`src/instance/`)
+- `manager.ts` - Core instance lifecycle operations
+- Handles creation, starting/stopping, status checking
+- Integrates with system commands and PostgreSQL binaries
+
+#### Utilities (`src/utils/`)
+- `validation.ts` - Input validation functions (names, ports, configs)
+- `system.ts` - System requirements checking and PostgreSQL detection
+- `display.ts` - Formatted output for tables, JSON, YAML
+
+### Testing Strategy
+- Uses Bun's built-in testing framework
+- Test files located alongside source (`.test.ts` files)
+- Current coverage includes validation, system checks, and type definitions
+- See `TESTING.md` for detailed testing procedures
+
+### Development Workflow
+1. **Make changes** to source files in `src/`
+2. **Run tests** with `bun test --watch` during development
+3. **Test CLI commands** with `bun run dev <command>`
+4. **Type check** with `bun run typecheck`
+5. **Build binary** with `bun run build:binary` for testing
+
+### Configuration System
+- Global config: `~/.pgforge/config.yaml`
+- Instance configs: `~/.pgforge/instances/<name>.yaml`
+- Templates system for development, production, testing scenarios
+- YAML validation with proper error reporting
+
+### Error Handling
+- Comprehensive input validation with helpful error messages
+- System requirement checking before operations
+- Graceful failure handling with appropriate exit codes
+- User-friendly error display with Chalk formatting
